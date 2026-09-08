@@ -1,0 +1,16 @@
+{
+  "name": "@oronyx/sdk",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@oronyx/core": "workspace:*",
+    "@mysten/sui": "^2.27.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0"
+  }
+}
