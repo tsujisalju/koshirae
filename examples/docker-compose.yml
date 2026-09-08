@@ -1,45 +1,45 @@
 services:
   frontend:
     build:
-      context: ./frontend
+      context: ./reference-frontend
     ports:
       - "3000:3000"
     volumes:
-      - ./frontend:/app
+      - ./reference-frontend:/app
       - /app/node_modules
       - frontend_npm_cache:/root/.npm
     environment:
       - NEXT_PUBLIC_AGENT_SERVICE_URL=http://localhost:8000
     env_file:
-      - ./frontend/.env
+      - ./reference-frontend/.env
     depends_on:
       - agent-service
 
   agent-service:
     build:
-      context: ./agent-service
+      context: ./reference-agent
     ports:
       - "8000:8000"
     volumes:
-      - ./agent-service:/app
+      - ./reference-agent:/app
     environment:
       - ORONYX_EXECUTOR_URL=http://executor:4000
     env_file:
-      - ./agent-service/.env
+      - ./reference-agent/.env
     depends_on:
       - executor
 
   executor:
     build:
-      context: ./executor
+      context: ./reference-executor
     ports:
       - "4000:4000"
     volumes:
-      - ./executor:/app
+      - ./reference-executor:/app
       - /app/node_modules
       - executor_npm_cache:/root/.npm
     env_file:
-      - ./executor/.env
+      - ./reference-executor/.env
 
 volumes:
   frontend_npm_cache:

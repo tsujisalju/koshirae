@@ -1,8 +1,8 @@
 {
-  "venvPath": "./agent-service",
+  "venvPath": "./examples/reference-agent",
   "venv": ".venv",
-  "include": ["agent-service"],
-  "extraPaths": ["./agent-service"],
+  "include": ["./examples/reference-agent"],
+  "extraPaths": ["./examples/reference-agent"],
   "reportAny": false,
   "reportExplicitAny": false,
   "reportUnknownMemberType": false,
@@ -13,5 +13,5 @@
   "reportMissingParameterType": false,
   "reportUnannotatedClassAttribute": false,
   "reportUnusedCallResult": false,
-  "reportDeprecated": false
+  "reportDeprecated": false,
 }
