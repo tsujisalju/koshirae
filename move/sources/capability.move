@@ -1,5 +1,6 @@
 module oronyx::capability;
 
+use oronyx::operator_cap::{Self, OperatorCap};
 use std::type_name::{Self, TypeName};
 use sui::balance::{Balance};
 use sui::coin::{Self, Coin};
@@ -21,13 +22,14 @@ const ETargetNotAllowed: u64 = 3;
 const EOverTxLimit: u64 = 4;
 const EOverPeriodLimit: u64 = 5;
 const ENotOwner: u64 = 6;
-const ENotOperator: u64 = 7;
-const EWrongVault: u64 = 8;
-const EWrongCap: u64 = 9;
-const ECannotRemoveProtocolTarget: u64 = 10;
-const ECoinTypeNotAllowed: u64 = 11;
-const ECoinTypeNotInVault: u64 = 12;
-const ECoinTypeAlreadyAllowed: u64 = 13;
+const EWrongVault: u64 = 7;
+const EWrongCap: u64 = 8;
+const ECannotRemoveProtocolTarget: u64 = 9;
+const ECoinTypeNotAllowed: u64 = 10;
+const ECoinTypeNotInVault: u64 = 11;
+const ECoinTypeAlreadyAllowed: u64 = 12;
+const EWrongAgentCap: u64 = 13;
+const EStaleGeneration: u64 = 14;
 
 /* Action type codes */
 const ACTION_TRANSFER: u8 = 0;
@@ -61,17 +63,12 @@ public struct AgentCap has key {
     id: UID,
     vault_id: ID,
     owner: address,
-    operator: address,
+    generation: u64,
     period_length_ms: u64,
     limits: VecMap<TypeName, CoinLimits>,
     allowed_actions: VecSet<u8>,
     allowed_targets: VecSet<address>,
-    /// Subset of allowed_targets that a currently-enabled action type
-    /// structurally depends on (a DeFi pool, a validator address) —
-    /// protected from removal via remove_allowed_target so the user can't
-    /// accidentally break an action by editing their target whitelist.
-    /// Populated once at cap creation; not independently user-editable.
-    protocol_targets: VecSet<address>,
+    protocol_targets: VecSet<address>, //subset of allowed_targets for action-depending targets
     risk_threshold: u8,
     expiry_ms: u64,
     active: bool,
@@ -98,7 +95,18 @@ public struct CapCreated has copy, drop {
     cap_id: ID,
     vault_id: ID,
     owner: address,
+}
+
+public struct OperatorCapMinted has copy, drop {
+    operator_cap_id: ID,
+    agent_cap_id: ID,
     operator: address,
+    generation: u64,
+}
+
+public struct OperatorRevoked has copy, drop {
+    cap_id: ID,
+    new_generation: u64,
 }
 
 public struct ActionExecuted has copy, drop {
@@ -141,7 +149,7 @@ public struct ProceedsReturned has copy, drop {
 
 /* Vault Functions */
 
-/// Shared logic for actions to put assets into vault
+/// Shared logic for actions to put assets into vault.
 fun put_into_vault<T>(vault: &mut Vault, payment: Coin<T>) {
     let key = type_name::with_defining_ids<T>();
     if (bag::contains(&vault.balances, key)) {
@@ -177,7 +185,6 @@ public fun withdraw<T>(vault: &mut Vault, amount: u64, ctx: &mut TxContext): Coi
 /// vault-creation entrypoint, so a vault can never exist without a cap
 /// already governing it.
 public fun create_agent_cap(
-    operator: address,
     period_length_ms: u64,
     allowed_actions: vector<u8>,
     allowed_targets: vector<address>,
@@ -209,7 +216,7 @@ public fun create_agent_cap(
         id: object::new(ctx),
         vault_id,
         owner: ctx.sender(),
-        operator,
+        generation: 0,
         period_length_ms,
         limits: vec_map::empty(), //populated via add_coin_limits<T>, once per type, in the same PTB right after
         allowed_actions: vec_set::from_keys(allowed_actions),
@@ -224,11 +231,45 @@ public fun create_agent_cap(
         cap_id: object::id(&cap),
         vault_id,
         owner: cap.owner,
-        operator: cap.operator,
     });
 
     transfer::share_object(vault);
     transfer::share_object(cap);
+    // Next, in the same PTB, Owner calls mint_operator_cap() to delegate
+    // to an operator, and add_coin_limits<T>() to add limits to allowed coin types.
+}
+
+public fun mint_operator_cap(
+    cap: &AgentCap,
+    operator: address,
+    ctx: &mut TxContext
+) {
+    assert!(cap.owner == ctx.sender(), ENotOwner);
+    let op_cap = operator_cap::new(object::id(cap), cap.generation, ctx);
+
+    event::emit(OperatorCapMinted {
+        operator_cap_id: object::id(&op_cap),
+        agent_cap_id: object::id(cap),
+        operator,
+        generation: cap.generation,
+    });
+    operator_cap::transfer_to(op_cap, operator);
+}
+
+/// Owner-only. Bumps generation to invalidate every OperatorCap referencing
+/// this AgentCap at once. Rotating operators is revoke + mint
+public fun revoke_operator(cap: &mut AgentCap, ctx: &mut TxContext) {
+    assert!(cap.owner == ctx.sender(), ENotOwner);
+    cap.generation = cap.generation + 1;
+    event::emit(OperatorRevoked {
+        cap_id: object::id(cap),
+        new_generation: cap.generation,
+    })
+}
+
+fun assert_valid_operator(op_cap: &OperatorCap, cap: &AgentCap) {
+    assert!(op_cap.agent_cap_id() == object::id(cap), EWrongAgentCap);
+    assert!(op_cap.generation() == cap.generation, EStaleGeneration);
 }
 
 public fun add_coin_limits<T>(
@@ -342,6 +383,7 @@ fun roll_period_if_needed(limits: &mut CoinLimits, period_length_ms: u64, now_ms
 /// If it exceeds risk threshold, set as PendingAction owned by user instead of touching the vault.
 public fun execute_action<T>(
     cap: &mut AgentCap,
+    op_cap: &OperatorCap,
     vault: &mut Vault,
     action_type: u8,
     target: address,
@@ -350,7 +392,7 @@ public fun execute_action<T>(
     clock: &Clock,
     ctx: &mut TxContext,
 ): Option<Coin<T>> {
-    assert!(cap.operator == ctx.sender(), ENotOperator);
+    assert_valid_operator(op_cap, cap);
     assert!(cap.vault_id == object::id(vault), EWrongVault);
     assert!(cap.active, EInactive);
 
@@ -420,6 +462,7 @@ public fun execute_action<T>(
 /// the operator rather than returning to the vault.
 public fun execute_cetus_swap_and_transfer_to_operator<T>(
     cap: &mut AgentCap,
+    op_cap: &OperatorCap,
     vault: &mut Vault,
     cetus_pool_address: address,
     amount: u64, // MIST
@@ -427,7 +470,7 @@ public fun execute_cetus_swap_and_transfer_to_operator<T>(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
-    let maybe_coin = execute_action<T>(cap, vault, ACTION_CETUS_SWAP, cetus_pool_address, amount, risk_score, clock, ctx);
+    let maybe_coin = execute_action<T>(cap, op_cap, vault, ACTION_CETUS_SWAP, cetus_pool_address, amount, risk_score, clock, ctx);
     if(maybe_coin.is_some()) {
         transfer::public_transfer(maybe_coin.destroy_some(), ctx.sender());
     } else {
@@ -437,11 +480,11 @@ public fun execute_cetus_swap_and_transfer_to_operator<T>(
 
 public fun return_proceeds<T>(
     cap: &AgentCap,
+    op_cap: &OperatorCap,
     vault: &mut Vault,
     payment: Coin<T>,
-    ctx: &TxContext,
 ) {
-    assert!(cap.operator == ctx.sender(), ENotOperator);
+    assert_valid_operator(op_cap, cap);
     assert!(cap.vault_id == object::id(vault), EWrongVault);
 
     let amount = payment.value();
@@ -467,6 +510,7 @@ public fun return_proceeds<T>(
 
 public fun execute_transfer<T>(
     cap: &mut AgentCap,
+    op_cap: &OperatorCap,
     vault: &mut Vault,
     recipient: address,
     amount: u64, // MIST
@@ -474,7 +518,7 @@ public fun execute_transfer<T>(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
-    let maybe_coin = execute_action<T>(cap, vault, ACTION_TRANSFER, recipient, amount, risk_score, clock, ctx);
+    let maybe_coin = execute_action<T>(cap, op_cap, vault, ACTION_TRANSFER, recipient, amount, risk_score, clock, ctx);
     if (maybe_coin.is_some()) {
         transfer::public_transfer(maybe_coin.destroy_some(), recipient);
     } else {
@@ -491,6 +535,7 @@ public fun execute_transfer<T>(
 /// result must be explicitly transferred here.
 public fun execute_stake(
     cap: &mut AgentCap,
+    op_cap: &OperatorCap,
     vault: &mut Vault,
     system_state: &mut SuiSystemState,
     validator: address,
@@ -499,7 +544,7 @@ public fun execute_stake(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
-    let maybe_coin = execute_action<SUI>(cap, vault, ACTION_STAKE, validator, amount, risk_score, clock, ctx);
+    let maybe_coin = execute_action<SUI>(cap, op_cap, vault, ACTION_STAKE, validator, amount, risk_score, clock, ctx);
     if (maybe_coin.is_some()) {
         let staked = sui_system::request_add_stake_non_entry(
             system_state,
@@ -518,6 +563,7 @@ public fun execute_stake(
 /// making these consistent; a mismatch here is a caller bug.
 public fun execute_mock_swap_sui_to_usdc(
     cap: &mut AgentCap,
+    op_cap: &OperatorCap,
     vault: &mut Vault,
     pool: &mut MockPool,
     pool_address: address,
@@ -526,10 +572,10 @@ public fun execute_mock_swap_sui_to_usdc(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
-    let maybe_coin = execute_action<SUI>(cap, vault, ACTION_MOCK_SWAP, pool_address, amount, risk_score, clock, ctx);
+    let maybe_coin = execute_action<SUI>(cap, op_cap, vault, ACTION_MOCK_SWAP, pool_address, amount, risk_score, clock, ctx);
     if (maybe_coin.is_some()) {
         let out: Coin<MOCK_USDC> = mock_dex::swap_sui_for_mock_usdc(pool, maybe_coin.destroy_some(), ctx);
-        transfer::public_transfer(out, cap.owner);
+        put_into_vault(vault, out);
     } else {
         maybe_coin.destroy_none();
     }
@@ -537,6 +583,7 @@ public fun execute_mock_swap_sui_to_usdc(
 
 public fun execute_mock_swap_usdc_to_sui(
     cap: &mut AgentCap,
+    op_cap: &OperatorCap,
     vault: &mut Vault,
     pool: &mut MockPool,
     pool_address: address,
@@ -545,7 +592,7 @@ public fun execute_mock_swap_usdc_to_sui(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
-    let maybe_coin = execute_action<MOCK_USDC>(cap, vault, ACTION_MOCK_SWAP, pool_address, amount, risk_score, clock, ctx);
+    let maybe_coin = execute_action<MOCK_USDC>(cap, op_cap, vault, ACTION_MOCK_SWAP, pool_address, amount, risk_score, clock, ctx);
     if (maybe_coin.is_some()) {
         let out: Coin<SUI> = mock_dex::swap_mock_usdc_for_sui(pool, maybe_coin.destroy_some(), ctx);
         put_into_vault(vault, out);
