@@ -30,6 +30,8 @@ const ECoinTypeNotInVault: u64 = 11;
 const ECoinTypeAlreadyAllowed: u64 = 12;
 const EWrongAgentCap: u64 = 13;
 const EStaleGeneration: u64 = 14;
+const EOverVaultTxLimit: u64 = 15;
+const EOverVaultPeriodLimit: u64 = 16;
 
 /* Action type codes */
 const ACTION_TRANSFER: u8 = 0;
@@ -40,12 +42,14 @@ const ACTION_CETUS_SWAP: u8 = 3;
 /* Structs */
 
 /// Shared object that holds the user's funds.
-/// The vault does not enforce the policy.
-/// All policy checks live on AgentCap
+/// Per-vault limits added to track total vault spending across multiple agents
+/// Limits not required for single agent setup
 public struct Vault has key {
     id: UID,
     owner: address,
     balances: Bag,
+    limits: VecMap<TypeName, CoinLimits>,
+    period_length_ms: u64,
 }
 
 public struct CoinLimits has store {
@@ -149,6 +153,23 @@ public struct ProceedsReturned has copy, drop {
 
 /* Vault Functions */
 
+/// Create vault with no limits and no agents attached
+/// Returned by value, to be composed with create_agent_cap_for_vault
+/// or direct to share_vault at the end in one PTB.
+public fun new_vault(period_length_ms: u64, ctx: &mut TxContext): Vault {
+    Vault {
+        id: object::new(ctx),
+        owner: ctx.sender(),
+        balances: bag::new(ctx),
+        limits: vec_map::empty(),
+        period_length_ms,
+    }
+}
+
+public fun share_vault(vault: Vault) {
+    transfer::share_object(vault);
+}
+
 /// Shared logic for actions to put assets into vault.
 fun put_into_vault<T>(vault: &mut Vault, payment: Coin<T>) {
     let key = type_name::with_defining_ids<T>();
@@ -178,13 +199,59 @@ public fun withdraw<T>(vault: &mut Vault, amount: u64, ctx: &mut TxContext): Coi
     coin::take(bal, amount, ctx)
 }
 
+public fun add_vault_coin_limits<T>(
+    vault: &mut Vault,
+    spending_limit_per_tx: u64,
+    spending_limit_period: u64,
+    clock: &Clock,
+    ctx: &TxContext,
+) {
+    assert!(vault.owner == ctx.sender(), ENotOwner);
+    let key = type_name::with_defining_ids<T>();
+    assert!(!vault.limits.contains(&key), ECoinTypeAlreadyAllowed);
+    vault.limits.insert(key, CoinLimits {
+        spending_limit_per_tx,
+        spending_limit_period,
+        period_spent: 0,
+        period_start_ms: clock.timestamp_ms(),
+    });
+}
+
+public fun update_vault_spending_limit_per_tx<T>(vault: &mut Vault, spending_limit_per_tx: u64, ctx: &TxContext) {
+    assert!(vault.owner == ctx.sender(), ENotOwner);
+    let key = type_name::with_defining_ids<T>();
+    assert!(vault.limits.contains(&key), ECoinTypeNotAllowed);
+    vault.limits.get_mut(&key).spending_limit_per_tx = spending_limit_per_tx;
+}
+
+public fun update_vault_spending_limit_period<T>(vault: &mut Vault, spending_limit_period: u64, ctx: &TxContext) {
+    assert!(vault.owner == ctx.sender(), ENotOwner);
+    let key = type_name::with_defining_ids<T>();
+    assert!(vault.limits.contains(&key), ECoinTypeNotAllowed);
+    vault.limits.get_mut(&key).spending_limit_period = spending_limit_period;
+}
+
+public fun remove_vault_coin_limits<T>(vault: &mut Vault, ctx: &TxContext) {
+    assert!(vault.owner == ctx.sender(), ENotOwner);
+    let key = type_name::with_defining_ids<T>();
+    assert!(vault.limits.contains(&key), ECoinTypeNotAllowed);
+    let (_, limits) = vault.limits.remove(&key);
+    let CoinLimits { .. } = limits;
+}
+
+public fun update_vault_period_length_ms(vault: &mut Vault, period_length_ms: u64, ctx: &TxContext) {
+    assert!(vault.owner == ctx.sender(), ENotOwner);
+    vault.period_length_ms = period_length_ms;
+}
+
 /* AgentCap Lifecycle */
 
-/// Creates a vault and its governing AgentCap together, in one call, one
-/// signature. Vaults are 1:1 with agents — there is no standalone
-/// vault-creation entrypoint, so a vault can never exist without a cap
-/// already governing it.
-public fun create_agent_cap(
+/// Creates an AgentCap and attach to a vault, either a freshly created
+/// one in the same PTB, or an already-shared vault the caller owns.
+/// A vault can have any number of AgentCaps, while an AgentCap always
+/// belongs to exactly one vault.
+public fun create_agent_cap_for_vault(
+    vault: &Vault,
     period_length_ms: u64,
     allowed_actions: vector<u8>,
     allowed_targets: vector<address>,
@@ -193,12 +260,8 @@ public fun create_agent_cap(
     expiry_ms: u64,
     ctx: &mut TxContext,
 ) {
-    let vault = Vault {
-        id: object::new(ctx),
-        owner: ctx.sender(),
-        balances: bag::new(ctx),
-    };
-    let vault_id = object::id(&vault);
+    assert!(vault.owner == ctx.sender(), ENotOwner);
+    let vault_id = object::id(vault);
 
     let mut targets = vec_set::from_keys(allowed_targets);
     let mut i = 0;
@@ -232,11 +295,11 @@ public fun create_agent_cap(
         vault_id,
         owner: cap.owner,
     });
-
-    transfer::share_object(vault);
     transfer::share_object(cap);
-    // Next, in the same PTB, Owner calls mint_operator_cap() to delegate
-    // to an operator, and add_coin_limits<T>() to add limits to allowed coin types.
+    // Next, in the same PTB
+    // 1. Owner calls mint_operator_cap() to delegate to an operator
+    // 2. add_coin_limits<T>() to add limits to allowed coin types.
+    // 3. share_vault() if the vault is still a locally created in the PTB.
 }
 
 public fun mint_operator_cap(
@@ -288,6 +351,17 @@ public fun add_coin_limits<T>(
         period_spent: 0,
         period_start_ms: clock.timestamp_ms(),
     });
+}
+
+public fun remove_coin_limits<T>(
+    cap: &mut AgentCap,
+    ctx: &TxContext,
+) {
+    assert!(cap.owner == ctx.sender(), ENotOwner);
+    let key = type_name::with_defining_ids<T>();
+    assert!(cap.limits.contains(&key), ECoinTypeNotAllowed);
+    let (_, limits) = cap.limits.remove(&key);
+    let CoinLimits { .. } = limits;
 }
 
 public fun add_allowed_target(
@@ -420,6 +494,14 @@ public fun execute_action<T>(
     roll_period_if_needed(limits, period_length_ms, now_ms);
     assert!(limits.period_spent + amount <= limits.spending_limit_period, EOverPeriodLimit);
 
+    let vault_period_length_ms = vault.period_length_ms;
+    if (vault.limits.contains(&coin_key)) {
+        let vault_limits = vault.limits.get_mut(&coin_key);
+        assert!(amount <= vault_limits.spending_limit_per_tx, EOverVaultTxLimit);
+        roll_period_if_needed(vault_limits, vault_period_length_ms, now_ms);
+        assert!(vault_limits.period_spent + amount <= vault_limits.spending_limit_period, EOverVaultPeriodLimit);
+    };
+
     if (risk_score > risk_threshold) {
         let pending = PendingAction<T> {
             id: object::new(ctx),
@@ -443,6 +525,10 @@ public fun execute_action<T>(
         option::none()
     } else {
         limits.period_spent = limits.period_spent + amount;
+        if (vault.limits.contains(&coin_key)) {
+            let vault_limits = vault.limits.get_mut(&coin_key);
+            vault_limits.period_spent = vault_limits.period_spent + amount;
+        };
         let bal: &mut Balance<T> = bag::borrow_mut(&mut vault.balances, coin_key);
         let out_coin = coin::take(bal, amount, ctx);
         event::emit(ActionExecuted { cap_id, action_type, target, amount, risk_score });
@@ -624,6 +710,10 @@ public fun approve_pending<T>(
     if (cap.limits.contains(&coin_key)) {
         let limits = cap.limits.get_mut(&coin_key);
         limits.period_spent = limits.period_spent + amount;
+    };
+    if (vault.limits.contains(&coin_key)) {
+        let vault_limits = vault.limits.get_mut(&coin_key);
+        vault_limits.period_spent = vault_limits.period_spent + amount;
     };
 
     let bal: &mut Balance<T> = bag::borrow_mut(&mut vault.balances, coin_key);
