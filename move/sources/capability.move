@@ -32,6 +32,7 @@ const EWrongAgentCap: u64 = 13;
 const EStaleGeneration: u64 = 14;
 const EOverVaultTxLimit: u64 = 15;
 const EOverVaultPeriodLimit: u64 = 16;
+const EStaleNonce: u64 = 17;
 
 /* Action type codes */
 const ACTION_TRANSFER: u8 = 0;
@@ -76,6 +77,7 @@ public struct AgentCap has key {
     risk_threshold: u8,
     expiry_ms: u64,
     active: bool,
+    last_nonce: u64,
 }
 
 
@@ -244,6 +246,16 @@ public fun update_vault_period_length_ms(vault: &mut Vault, period_length_ms: u6
     vault.period_length_ms = period_length_ms;
 }
 
+#[test_only]
+public fun balance_for_testing<T>(vault: &Vault): u64 {
+    let key = type_name::with_defining_ids<T>();
+    if (bag::contains(&vault.balances, key)) {
+        let bal: &Balance<T> = bag::borrow(&vault.balances, key);
+        bal.value()
+    } else {
+        0
+    }
+}
 /* AgentCap Lifecycle */
 
 /// Creates an AgentCap and attach to a vault, either a freshly created
@@ -288,6 +300,7 @@ public fun create_agent_cap_for_vault(
         risk_threshold,
         expiry_ms,
         active: true,
+        last_nonce: 0,
     };
 
     event::emit(CapCreated {
@@ -463,12 +476,15 @@ public fun execute_action<T>(
     target: address,
     amount: u64,
     risk_score: u8,
+    nonce: u64,
     clock: &Clock,
     ctx: &mut TxContext,
 ): Option<Coin<T>> {
     assert_valid_operator(op_cap, cap);
     assert!(cap.vault_id == object::id(vault), EWrongVault);
     assert!(cap.active, EInactive);
+    assert!(nonce > cap.last_nonce, EStaleNonce);
+    cap.last_nonce = nonce;
 
     let now_ms = clock.timestamp_ms();
     assert!(now_ms < cap.expiry_ms, EExpired);
@@ -553,10 +569,11 @@ public fun execute_cetus_swap_and_transfer_to_operator<T>(
     cetus_pool_address: address,
     amount: u64, // MIST
     risk_score: u8,
+    nonce: u64,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
-    let maybe_coin = execute_action<T>(cap, op_cap, vault, ACTION_CETUS_SWAP, cetus_pool_address, amount, risk_score, clock, ctx);
+    let maybe_coin = execute_action<T>(cap, op_cap, vault, ACTION_CETUS_SWAP, cetus_pool_address, amount, risk_score, nonce, clock, ctx);
     if(maybe_coin.is_some()) {
         transfer::public_transfer(maybe_coin.destroy_some(), ctx.sender());
     } else {
@@ -601,10 +618,11 @@ public fun execute_transfer<T>(
     recipient: address,
     amount: u64, // MIST
     risk_score: u8,
+    nonce: u64,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
-    let maybe_coin = execute_action<T>(cap, op_cap, vault, ACTION_TRANSFER, recipient, amount, risk_score, clock, ctx);
+    let maybe_coin = execute_action<T>(cap, op_cap, vault, ACTION_TRANSFER, recipient, amount, risk_score, nonce, clock, ctx);
     if (maybe_coin.is_some()) {
         transfer::public_transfer(maybe_coin.destroy_some(), recipient);
     } else {
@@ -627,10 +645,11 @@ public fun execute_stake(
     validator: address,
     amount: u64, // MIST
     risk_score: u8,
+    nonce: u64,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
-    let maybe_coin = execute_action<SUI>(cap, op_cap, vault, ACTION_STAKE, validator, amount, risk_score, clock, ctx);
+    let maybe_coin = execute_action<SUI>(cap, op_cap, vault, ACTION_STAKE, validator, amount, risk_score, nonce, clock, ctx);
     if (maybe_coin.is_some()) {
         let staked = sui_system::request_add_stake_non_entry(
             system_state,
@@ -655,10 +674,11 @@ public fun execute_mock_swap_sui_to_usdc(
     pool_address: address,
     amount: u64, // MIST
     risk_score: u8,
+    nonce: u64,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
-    let maybe_coin = execute_action<SUI>(cap, op_cap, vault, ACTION_MOCK_SWAP, pool_address, amount, risk_score, clock, ctx);
+    let maybe_coin = execute_action<SUI>(cap, op_cap, vault, ACTION_MOCK_SWAP, pool_address, amount, risk_score, nonce, clock, ctx);
     if (maybe_coin.is_some()) {
         let out: Coin<MOCK_USDC> = mock_dex::swap_sui_for_mock_usdc(pool, maybe_coin.destroy_some(), ctx);
         put_into_vault(vault, out);
@@ -675,10 +695,11 @@ public fun execute_mock_swap_usdc_to_sui(
     pool_address: address,
     amount: u64, // MOCK_USDC smallest unit
     risk_score: u8,
+    nonce: u64,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
-    let maybe_coin = execute_action<MOCK_USDC>(cap, op_cap, vault, ACTION_MOCK_SWAP, pool_address, amount, risk_score, clock, ctx);
+    let maybe_coin = execute_action<MOCK_USDC>(cap, op_cap, vault, ACTION_MOCK_SWAP, pool_address, amount, risk_score, nonce, clock, ctx);
     if (maybe_coin.is_some()) {
         let out: Coin<SUI> = mock_dex::swap_mock_usdc_for_sui(pool, maybe_coin.destroy_some(), ctx);
         put_into_vault(vault, out);
