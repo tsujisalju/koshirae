@@ -7,6 +7,7 @@ import { mechanicalRiskEvaluator } from "../risk/evaluate";
 import { buildIntentTransaction } from "../ptb/build-intent";
 import { suiClient } from "../chain/client";
 import { intents } from "../db/schema";
+import { eq } from "drizzle-orm";
 
 export const intentsRouter = Router();
 const SUI_TYPE_ARG = "0x2::sui::SUI";
@@ -98,4 +99,42 @@ intentsRouter.post("/agent-caps/:agentCapId/intents", async (req, res) => {
     ...record,
     unsignedTransaction: Buffer.from(txBytes).toString("base64"),
   });
+});
+
+intentsRouter.get("/intents/:id", async (req, res) => {
+  const row = await db.query.intents.findFirst({
+    where: { id: req.params.id },
+  });
+  if (!row) return res.status(404).json({ error: "intent_not_found" });
+  return res.status(200).json(rowToIntent(row));
+});
+
+intentsRouter.post("/intents/:id/submitted", async (req, res) => {
+  const { txDigest } = req.body ?? {};
+  if (typeof txDigest !== "string")
+    return res.status(400).json({ error: "txDigest required" });
+
+  const row = await db.query.intents.findFirst({
+    where: {
+      id: req.params.id,
+    },
+  });
+  if (!row) return res.status(404).json({ error: "intent_not_found" });
+
+  const result = await suiClient.getTransaction({
+    digest: txDigest,
+    include: { effects: true },
+  });
+  const succeeded = result.Transaction?.status.success;
+  const newStatus = succeeded
+    ? row.status === "pending_approval"
+      ? "pending_approval"
+      : "executed"
+    : "failed";
+
+  await db
+    .update(intents)
+    .set({ status: newStatus, txDigest })
+    .where(eq(intents.id, req.params.id));
+  return res.json({ id: row.id, status: newStatus, txDigest });
 });
