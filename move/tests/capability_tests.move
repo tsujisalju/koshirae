@@ -26,7 +26,7 @@ const ECoinTypeNotInVault: u64 = 11;
 const ECoinTypeAlreadyAllowed: u64 = 12;
 const EWrongAgentCap: u64 = 13;
 const EStaleGeneration: u64 = 14;
-const EOverVaultTxLimit: u64 = 15;
+//const EOverVaultTxLimit: u64 = 15;
 const EOverVaultPeriodLimit: u64 = 16;
 const EStaleNonce: u64 = 17;
 
@@ -573,6 +573,7 @@ fun agent_can_round_trip_sui_to_usdc_and_back() {
 
 /* ===== Shared-treasury: vault-level aggregate limits ===== */
 
+#[allow(unused_variable)]
 /// Two independently-scoped AgentCaps drawing on one shared Vault — the
 /// core cardinality of the shared-treasury model.
 #[test]
