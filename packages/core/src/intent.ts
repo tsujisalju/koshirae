@@ -10,17 +10,24 @@ export const SubmitIntentRequest = z.discriminatedUnion("actionType", [
   z.object({
     actionType: z.literal("transfer"),
     coinType: CoinType,
+    idempotencyKey: z.string(),
     ...baseIntentFields,
   }),
   z.object({
     actionType: z.literal("mockSwap"),
     coinType: CoinType,
+    idempotencyKey: z.string(),
     ...baseIntentFields,
   }),
-  z.object({ actionType: z.literal("stake"), ...baseIntentFields }), //No coinType, always SUI
+  z.object({
+    actionType: z.literal("stake"),
+    idempotencyKey: z.string(),
+    ...baseIntentFields,
+  }), //No coinType, always SUI
   z.object({
     actionType: z.literal("cetusSwap"),
     coinType: CoinType,
+    idempotencyKey: z.string(),
     ...baseIntentFields,
   }),
 ]);
