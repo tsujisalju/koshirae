@@ -246,6 +246,16 @@ public fun update_vault_period_length_ms(vault: &mut Vault, period_length_ms: u6
     vault.period_length_ms = period_length_ms;
 }
 
+#[test_only]
+public fun balance_for_testing<T>(vault: &Vault): u64 {
+    let key = type_name::with_defining_ids<T>();
+    if (bag::contains(&vault.balances, key)) {
+        let bal: &Balance<T> = bag::borrow(&vault.balances, key);
+        bal.value()
+    } else {
+        0
+    }
+}
 /* AgentCap Lifecycle */
 
 /// Creates an AgentCap and attach to a vault, either a freshly created
