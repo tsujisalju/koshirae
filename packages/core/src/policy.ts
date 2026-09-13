@@ -41,5 +41,6 @@ export const AgentCap = z.object({
   riskThreshold: z.number().int().min(0).max(255),
   expiryMs: z.number().int().positive(),
   active: z.boolean(),
+  lastNonce: z.number().int().nonnegative(),
 });
 export type AgentCap = z.infer<typeof AgentCap>;

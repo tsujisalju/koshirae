@@ -4,6 +4,8 @@ import { CoinAmount, CoinType, SuiAddress, SuiObjectID } from "./primitives";
 const baseIntentFields = {
   target: SuiAddress,
   amount: CoinAmount,
+  operatorCapId: SuiObjectID,
+  agentReportedRisk: z.number().int().min(0).max(255).optional(),
 };
 
 export const SubmitIntentRequest = z.discriminatedUnion("actionType", [
