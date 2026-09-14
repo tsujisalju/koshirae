@@ -8,6 +8,7 @@ import { buildIntentTransaction } from "../ptb/build-intent";
 import { suiClient } from "../chain/client";
 import { intents } from "../db/schema";
 import { eq } from "drizzle-orm";
+import { z } from "zod";
 
 export const intentsRouter = Router();
 const SUI_TYPE_ARG = "0x2::sui::SUI";
@@ -28,9 +29,10 @@ intentsRouter.post("/agent-caps/:agentCapId/intents", async (req, res) => {
   const { agentCapId } = req.params;
   const parsed = SubmitIntentRequest.safeParse(req.body);
   if (!parsed.success) {
-    return res
-      .status(400)
-      .json({ error: "invalid_request", details: parsed.error.flatten() });
+    return res.status(400).json({
+      error: "invalid_request",
+      details: z.treeifyError(parsed.error),
+    });
   }
   const request = parsed.data;
 

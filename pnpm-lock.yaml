@@ -24,13 +24,16 @@ importers:
         version: 17.4.2
       drizzle-orm:
         specifier: 1.0.0-rc.4
-        version: 1.0.0-rc.4(@types/pg@8.23.1)(pg@8.23.0)(postgres@3.4.9)(valibot@1.4.2(typescript@6.0.3))(zod@4.5.4)
+        version: 1.0.0-rc.4(@types/pg@8.23.1)(pg@8.23.0)(postgres@3.4.9)(valibot@1.4.2(typescript@6.0.3))(zod@4.6.4)
       express:
         specifier: ^5.2.1
         version: 5.2.1
       postgres:
         specifier: ^3.4.9
         version: 3.4.9
+      zod:
+        specifier: ^4.6.4
+        version: 4.6.4
     devDependencies:
       '@types/cors':
         specifier: ^2.8.19
@@ -1067,6 +1070,9 @@ packages:
   zod@4.5.4:
     resolution: {integrity: sha512-sC95tT5iHHH9gtpj6A81kh+NEaRAUFN+qlUPDUbRfOMvNf5QCBqsb3WgvnpVtK5Y+4UfA6KqufotuTvMGiTlsA==}
 
+  zod@4.6.4:
+    resolution: {integrity: sha512-AXSD6hvGdvRjajG/l1cC+d6IrhH+sjmPKtYeQdJIK8MFJl3LyClzS+o/YsVC+zQZPupAaeH5skwwm8YqYH7BqA==}
+
 snapshots:
 
   '@0no-co/graphql.web@1.3.4(graphql@17.0.2)':
@@ -1476,13 +1482,13 @@ snapshots:
       get-tsconfig: 4.14.3
       jiti: 2.7.0
 
-  drizzle-orm@1.0.0-rc.4(@types/pg@8.23.1)(pg@8.23.0)(postgres@3.4.9)(valibot@1.4.2(typescript@6.0.3))(zod@4.5.4):
+  drizzle-orm@1.0.0-rc.4(@types/pg@8.23.1)(pg@8.23.0)(postgres@3.4.9)(valibot@1.4.2(typescript@6.0.3))(zod@4.6.4):
     optionalDependencies:
       '@types/pg': 8.23.1
       pg: 8.23.0
       postgres: 3.4.9
       valibot: 1.4.2(typescript@6.0.3)
-      zod: 4.5.4
+      zod: 4.6.4
 
   dunder-proto@1.0.1:
     dependencies:
@@ -1914,3 +1920,5 @@ snapshots:
   xtend@4.0.2: {}
 
   zod@4.5.4: {}
+
+  zod@4.6.4: {}
