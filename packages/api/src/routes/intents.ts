@@ -2,16 +2,22 @@ import { Intent, SubmitIntentRequest } from "@oronyx/core";
 import { randomUUID } from "crypto";
 import { Router } from "express";
 import { db } from "../db/client";
-import { fetchAgentCap, fetchOperatorCap } from "../chain/reads";
+import {
+  fetchAgentCap,
+  fetchOperatorCap,
+  fetchOperatorCapOwner,
+  findCreatedObjectId,
+} from "../chain/reads";
 import { mechanicalRiskEvaluator } from "../risk/evaluate";
 import { buildIntentTransaction } from "../ptb/build-intent";
-import { suiClient } from "../chain/client";
+import { ORONYX_PACKAGE_ID, suiClient } from "../chain/client";
 import { intents } from "../db/schema";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
+import { SUI_TYPE_ARG } from "@mysten/sui/utils";
+import { buildApprovalTransaction } from "../ptb/build-approval";
 
 export const intentsRouter = Router();
-const SUI_TYPE_ARG = "0x2::sui::SUI";
 
 function rowToIntent(row: typeof intents.$inferSelect): Intent {
   return {
@@ -126,6 +132,17 @@ intentsRouter.post("/intents/:id/submitted", async (req, res) => {
   const result = await suiClient.getTransaction({ digest: txDigest });
   const transaction = result.Transaction ?? result.FailedTransaction;
   const succeeded = transaction.status.success;
+
+  let pendingActionId: string | undefined;
+  if (succeeded && row.status === "pending_approval") {
+    const coinType =
+      row.request.actionType === "stake" ? SUI_TYPE_ARG : row.request.coinType;
+    pendingActionId = await findCreatedObjectId(
+      txDigest,
+      `${ORONYX_PACKAGE_ID}::capability::PendingAction<${coinType}>`,
+    );
+  }
+
   const newStatus = succeeded
     ? row.status === "pending_approval"
       ? "pending_approval"
@@ -134,7 +151,44 @@ intentsRouter.post("/intents/:id/submitted", async (req, res) => {
 
   await db
     .update(intents)
-    .set({ status: newStatus, txDigest })
+    .set({
+      status: newStatus,
+      txDigest,
+      ...(pendingActionId ? { pendingActionId } : {}),
+    })
     .where(eq(intents.id, req.params.id));
-  return res.json({ id: row.id, status: newStatus, txDigest });
+  return res.json({ id: row.id, status: newStatus, txDigest, pendingActionId });
+});
+
+intentsRouter.post("/intents/:id/approve", async (req, res) => {
+  const row = await db.query.intents.findFirst({
+    where: {
+      id: req.params.id,
+    },
+  });
+  if (!row) return res.status(404).json({ error: "intent_not_found" });
+  if (row.status !== "pending_approval")
+    return res.status(409).json({ error: "intent_not_pending_approval" });
+  if (!row.pendingActionId)
+    return res.status(400).json({ error: "pending_action_id_not_found" });
+
+  const intent = rowToIntent(row);
+  const agentCap = await fetchAgentCap(intent.agentCapId);
+
+  const operatorAddress =
+    intent.request.actionType === "cetusSwap"
+      ? await fetchOperatorCapOwner(intent.request.operatorCapId)
+      : undefined;
+
+  const tx = buildApprovalTransaction({
+    intent,
+    agentCapId: intent.agentCapId,
+    vaultId: agentCap.vaultId,
+    ownerAddress: agentCap.owner,
+    operatorAddress,
+  });
+  const txBytes = await tx.build({ client: suiClient });
+  return res
+    .status(200)
+    .json({ unsignedTransaction: Buffer.from(txBytes).toString("base64") });
 });

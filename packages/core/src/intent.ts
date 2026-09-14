@@ -53,5 +53,6 @@ export const Intent = z.object({
   riskScore: z.number().int().min(0).max(255).optional(),
   txDigest: z.string().optional(),
   createdAt: z.number().int().nonnegative(),
+  pendingActionId: z.string().optional(),
 });
 export type Intent = z.infer<typeof Intent>;

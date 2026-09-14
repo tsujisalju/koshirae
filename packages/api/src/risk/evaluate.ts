@@ -1,3 +1,4 @@
+import { SUI_TYPE_ARG } from "@mysten/sui/utils";
 import { AgentCap, SubmitIntentRequest } from "@oronyx/core";
 
 export interface RiskContent {
@@ -6,8 +7,6 @@ export interface RiskContent {
 }
 
 export type RiskEvaluator = (ctx: RiskContent) => number;
-
-const SUI_TYPE_ARG = "0x2::sui::SUI";
 
 export const mechanicalRiskEvaluator: RiskEvaluator = ({
   agentCap,

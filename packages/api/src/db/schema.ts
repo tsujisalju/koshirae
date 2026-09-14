@@ -21,6 +21,7 @@ export const intents = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
+    pendingActionId: text("pending_action_id"),
   },
   (table) => [
     uniqueIndex("intents_agent_cap_idempotency_idx").on(

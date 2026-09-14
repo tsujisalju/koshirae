@@ -1,9 +1,9 @@
 import { Transaction } from "@mysten/sui/transactions";
 import { SubmitIntentRequest } from "@oronyx/core";
 import { ORONYX_PACKAGE_ID } from "../chain/client";
+import { SUI_TYPE_ARG } from "@mysten/sui/utils";
 
 const SUI_SYSTEM_STATE_ID = "0x5";
-const SUI_TYPE_ARG = "0x2::sui::SUI";
 
 interface BuildParams {
   agentCapId: string;

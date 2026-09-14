@@ -151,3 +151,29 @@ export async function fetchVault(id: string): Promise<Vault> {
     limits: parseCoinLimitMap(f.limits),
   });
 }
+
+export async function fetchOperatorCapOwner(id: string): Promise<string> {
+  const { object } = await suiClient.getObject({ objectId: id });
+  if (object.owner.AddressOwner) {
+    return object.owner.AddressOwner;
+  }
+  throw new Error(`OperatorCap ${id} is not address-owned`);
+}
+
+export async function findCreatedObjectId(
+  digest: string,
+  typePrefix: string,
+): Promise<string | undefined> {
+  const result = await suiClient.getTransaction({
+    digest,
+    include: { effects: true, objectTypes: true },
+  });
+  const tx = result.Transaction ?? result.FailedTransaction;
+  const created = (tx?.effects?.changedObjects ?? []).find(
+    (c: any) =>
+      c.idOperation === "Created" &&
+      typeof c.objectType === "string" &&
+      c.objectType.startsWith(typePrefix),
+  );
+  return created?.objectId;
+}
