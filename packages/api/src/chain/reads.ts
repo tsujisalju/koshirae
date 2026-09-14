@@ -38,7 +38,9 @@ const CoinLimitsMapBcs = bcs.struct("VecMap<TypeName,CoinLimits>", {
 });
 
 // Mirrors sui::vec_set::VecSet<T>, which BCS-encodes as `{ contents: vector<T> }`.
-const VecSetU8Bcs = bcs.struct("VecSet<u8>", { contents: bcs.vector(bcs.u8()) });
+const VecSetU8Bcs = bcs.struct("VecSet<u8>", {
+  contents: bcs.vector(bcs.u8()),
+});
 const VecSetAddressBcs = bcs.struct("VecSet<address>", {
   contents: bcs.vector(bcs.Address),
 });

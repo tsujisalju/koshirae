@@ -18,7 +18,7 @@ function rowToIntent(row: typeof intents.$inferSelect): Intent {
     id: row.id,
     agentCapId: row.agentCapId,
     status: row.status as Intent["status"],
-    request: row.request,
+    request: SubmitIntentRequest.parse(row.request),
     riskScore: row.riskScore ?? undefined,
     txDigest: row.txDigest ?? undefined,
     createdAt: row.createdAt.getTime(),
@@ -42,7 +42,7 @@ intentsRouter.post("/agent-caps/:agentCapId/intents", async (req, res) => {
       idempotencyKey: request.idempotencyKey,
     },
   });
-  if (existing) return res.status(409).json(rowToIntent(existing));
+  if (existing) return res.status(200).json(rowToIntent(existing));
 
   const [agentCap, operatorCap] = await Promise.all([
     fetchAgentCap(agentCapId),
@@ -123,11 +123,9 @@ intentsRouter.post("/intents/:id/submitted", async (req, res) => {
   });
   if (!row) return res.status(404).json({ error: "intent_not_found" });
 
-  const result = await suiClient.getTransaction({
-    digest: txDigest,
-    include: { effects: true },
-  });
-  const succeeded = result.Transaction?.status.success;
+  const result = await suiClient.getTransaction({ digest: txDigest });
+  const transaction = result.Transaction ?? result.FailedTransaction;
+  const succeeded = transaction.status.success;
   const newStatus = succeeded
     ? row.status === "pending_approval"
       ? "pending_approval"
