@@ -477,8 +477,8 @@ public fun execute_action<T>(
     target: address,
     amount: u64,
     risk_score: u8,
-    requested_pending_window_ms: u64,
     nonce: u64,
+    requested_pending_window_ms: u64,
     clock: &Clock,
     ctx: &mut TxContext,
 ): Option<Coin<T>> {
@@ -566,6 +566,12 @@ public fun execute_action<T>(
 // Each has its own entry function because Move does not support
 // optional args,so each action type's extra required objects
 // (a MockPool, a SuiSystemState, etc.) need their own dedicated signature.
+//
+// execute_* wraps execute_action that checks against AgentCap policies
+// finish_* performs the actual atomic action, merging normal and pending path under same logic
+//
+// Normal path: execute_* -> finish_*
+// Pending path: execute_* -> approve_and_finish_* -> finish_*
 
 public fun execute_transfer<T>(
     cap: &mut AgentCap,
@@ -579,12 +585,25 @@ public fun execute_transfer<T>(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
-    let maybe_coin = execute_action<T>(cap, op_cap, vault, ACTION_TRANSFER, recipient, amount, risk_score, requested_pending_window_ms, nonce, clock, ctx);
+    let maybe_coin = execute_action<T>(cap, op_cap, vault, ACTION_TRANSFER, recipient, amount, risk_score, nonce, requested_pending_window_ms, clock, ctx);
     if (maybe_coin.is_some()) {
         transfer::public_transfer(maybe_coin.destroy_some(), recipient);
     } else {
         maybe_coin.destroy_none();
     }
+}
+
+public fun approve_pending_and_send<T>(
+    pending: PendingAction<T>, cap: &mut AgentCap, vault: &mut Vault, clock: &Clock, ctx: &mut TxContext,
+) {
+    let target = pending.target;
+    let coin = approve_pending(pending, cap, vault, clock, ctx);
+    transfer::public_transfer(coin, target);
+}
+
+fun finish_stake(coin: Coin<SUI>, system_state: &mut SuiSystemState, validator: address, owner: address, ctx: &mut TxContext) {
+    let staked = sui_system::request_add_stake_non_entry(system_state, coin, validator, ctx);
+    transfer::public_transfer(staked, owner);
 }
 
 /// `validator` is both the policy's target (must be in allowed_targets)
@@ -607,18 +626,31 @@ public fun execute_stake(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
-    let maybe_coin = execute_action<SUI>(cap, op_cap, vault, ACTION_STAKE, validator, amount, risk_score, requested_pending_window_ms, nonce, clock, ctx);
+    let maybe_coin = execute_action<SUI>(cap, op_cap, vault, ACTION_STAKE, validator, amount, risk_score, nonce, requested_pending_window_ms, clock, ctx);
     if (maybe_coin.is_some()) {
-        let staked = sui_system::request_add_stake_non_entry(
-            system_state,
-            maybe_coin.destroy_some(),
-            validator,
-            ctx
-        );
-        transfer::public_transfer(staked, cap.owner);
+        finish_stake(maybe_coin.destroy_some(), system_state, validator, cap.owner, ctx);
     } else {
         maybe_coin.destroy_none();
     }
+}
+
+public fun approve_and_finish_stake(
+    pending: PendingAction<SUI>, cap: &mut AgentCap, vault: &mut Vault, system_state: &mut SuiSystemState, clock: &Clock, ctx: &mut TxContext,
+) {
+    let validator = pending.target;
+    let owner = cap.owner;
+    let coin = approve_pending(pending, cap, vault, clock, ctx);
+    finish_stake(coin, system_state, validator, owner, ctx);
+}
+
+fun finish_mock_swap_sui_to_usdc(coin: Coin<SUI>, vault: &mut Vault, pool: &mut MockPool, ctx: &mut TxContext) {
+    let out: Coin<MOCK_USDC> = mock_dex::swap_sui_for_mock_usdc(pool, coin, ctx);
+    put_into_vault(vault, out);
+}
+
+fun finish_mock_swap_usdc_to_sui(coin: Coin<MOCK_USDC>, vault: &mut Vault, pool: &mut MockPool, ctx: &mut TxContext) {
+    let out: Coin<SUI> = mock_dex::swap_mock_usdc_for_sui(pool, coin, ctx);
+    put_into_vault(vault, out);
 }
 
 /// `pool_address` is both the policy's target (must be in allowed targets list)
@@ -637,10 +669,9 @@ public fun execute_mock_swap_sui_to_usdc(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
-    let maybe_coin = execute_action<SUI>(cap, op_cap, vault, ACTION_MOCK_SWAP, pool_address, amount, risk_score, requested_pending_window_ms, nonce, clock, ctx);
+    let maybe_coin = execute_action<SUI>(cap, op_cap, vault, ACTION_MOCK_SWAP, pool_address, amount, risk_score, nonce, requested_pending_window_ms, clock, ctx);
     if (maybe_coin.is_some()) {
-        let out: Coin<MOCK_USDC> = mock_dex::swap_sui_for_mock_usdc(pool, maybe_coin.destroy_some(), ctx);
-        put_into_vault(vault, out);
+        finish_mock_swap_sui_to_usdc(maybe_coin.destroy_some(), vault, pool, ctx);
     } else {
         maybe_coin.destroy_none();
     }
@@ -659,13 +690,26 @@ public fun execute_mock_swap_usdc_to_sui(
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
-    let maybe_coin = execute_action<MOCK_USDC>(cap, op_cap, vault, ACTION_MOCK_SWAP, pool_address, amount, risk_score, requested_pending_window_ms, nonce, clock, ctx);
+    let maybe_coin = execute_action<MOCK_USDC>(cap, op_cap, vault, ACTION_MOCK_SWAP, pool_address, amount, risk_score, nonce, requested_pending_window_ms, clock, ctx);
     if (maybe_coin.is_some()) {
-        let out: Coin<SUI> = mock_dex::swap_mock_usdc_for_sui(pool, maybe_coin.destroy_some(), ctx);
-        put_into_vault(vault, out);
+        finish_mock_swap_usdc_to_sui(maybe_coin.destroy_some(), vault, pool, ctx);
     } else {
         maybe_coin.destroy_none();
     }
+}
+
+public fun approve_and_finish_mock_swap_sui_to_usdc(
+    pending: PendingAction<SUI>, cap: &mut AgentCap, vault: &mut Vault, pool: &mut MockPool, clock: &Clock, ctx: &mut TxContext,
+) {
+    let coin = approve_pending(pending, cap, vault, clock, ctx);
+    finish_mock_swap_sui_to_usdc(coin, vault, pool, ctx);
+}
+
+public fun approve_and_finish_mock_swap_usdc_to_sui(
+    pending: PendingAction<MOCK_USDC>, cap: &mut AgentCap, vault: &mut Vault, pool: &mut MockPool, clock: &Clock, ctx: &mut TxContext,
+) {
+    let coin = approve_pending(pending, cap, vault, clock, ctx);
+    finish_mock_swap_usdc_to_sui(coin, vault, pool, ctx);
 }
 
 const MAX_SQRT_PRICE: u128 = 79226673515401279992447579055; // TickMath.tickIndexToSqrtPriceX64(443636)
