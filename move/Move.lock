@@ -22,26 +22,68 @@ use_environment = "local"
 manifest_digest = "D6F24A14508A4EC2AB08F1E7D2C4F06C76A0186CB48CBA015BD6FABE3D8B53CE"
 deps = { Sui = "Sui" }
 
+[pinned.testnet.CetusClmm]
+source = { git = "https://github.com/CetusProtocol/cetus-contracts.git", subdir = "packages/cetus_clmm", rev = "937d862c7c98eb7333355ce6f1f80a20fddf1c90" }
+use_environment = "testnet"
+manifest_digest = "019F7ACB141636C0C12E2E0C44D9ACB51A5F1B9A72842D9BFEE02A8345AA3B8B"
+deps = { IntegerMate = "IntegerMate", MoveSTL = "MoveSTL", std = "MoveStdlib", sui = "Sui" }
+
+[pinned.testnet.IntegerMate]
+source = { git = "https://github.com/CetusProtocol/integer-mate.git", subdir = "sui", rev = "3b8e0d46a7d7f69d6567d677e13c51325fe2a8ed" }
+use_environment = "testnet"
+manifest_digest = "A3AAD8ED30FCD8C2C22818625110622FF723636ECF9C45BC9DAA4C5F84FB8B7C"
+deps = { Sui = "Sui_1" }
+
+[pinned.testnet.MoveSTL]
+source = { git = "https://github.com/CetusProtocol/move-stl.git", subdir = "sui", rev = "0c89008667f5800d64e68ef191f0026c9ce13fb8" }
+use_environment = "testnet"
+manifest_digest = "A3AAD8ED30FCD8C2C22818625110622FF723636ECF9C45BC9DAA4C5F84FB8B7C"
+deps = { Sui = "Sui_1" }
+
 [pinned.testnet.MoveStdlib]
-source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/move-stdlib", rev = "722ac4fcf4841346c91775f596c4ce23fb7fbd0f" }
+source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/move-stdlib", rev = "2a0becb2fcc6989e492981104af67f62f2c9511a" }
+use_environment = "testnet"
+manifest_digest = "C4FE4C91DE74CBF223B2E380AE40F592177D21870DC2D7EB6227D2D694E05363"
+deps = {}
+
+[pinned.testnet.MoveStdlib_1]
+source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/move-stdlib", rev = "4dbcf811abde03f8b1b2bf127a0215f2f966c9c0" }
+use_environment = "testnet"
+manifest_digest = "C4FE4C91DE74CBF223B2E380AE40F592177D21870DC2D7EB6227D2D694E05363"
+deps = {}
+
+[pinned.testnet.MoveStdlib_2]
+source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/move-stdlib", rev = "46f18562f1f5af2438d35828e8b62d5e0b972db7" }
 use_environment = "testnet"
 manifest_digest = "C4FE4C91DE74CBF223B2E380AE40F592177D21870DC2D7EB6227D2D694E05363"
 deps = {}
 
 [pinned.testnet.Sui]
-source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "722ac4fcf4841346c91775f596c4ce23fb7fbd0f" }
+source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "2a0becb2fcc6989e492981104af67f62f2c9511a" }
 use_environment = "testnet"
 manifest_digest = "7AFB66695545775FBFBB2D3078ADFD084244D5002392E837FDE21D9EA1C6D01C"
 deps = { MoveStdlib = "MoveStdlib" }
 
 [pinned.testnet.SuiSystem]
-source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-system", rev = "722ac4fcf4841346c91775f596c4ce23fb7fbd0f" }
+source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-system", rev = "46f18562f1f5af2438d35828e8b62d5e0b972db7" }
 use_environment = "testnet"
 manifest_digest = "F1655B9F9B8ECE67FDBA648266DD75B48852F63BF2515856E822586882D1CA2A"
-deps = { MoveStdlib = "MoveStdlib", Sui = "Sui" }
+deps = { MoveStdlib = "MoveStdlib_2", Sui = "Sui_2" }
+
+[pinned.testnet.Sui_1]
+source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "4dbcf811abde03f8b1b2bf127a0215f2f966c9c0" }
+use_environment = "testnet"
+manifest_digest = "7AFB66695545775FBFBB2D3078ADFD084244D5002392E837FDE21D9EA1C6D01C"
+deps = { MoveStdlib = "MoveStdlib_1" }
+
+[pinned.testnet.Sui_2]
+source = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "46f18562f1f5af2438d35828e8b62d5e0b972db7" }
+use_environment = "testnet"
+manifest_digest = "7AFB66695545775FBFBB2D3078ADFD084244D5002392E837FDE21D9EA1C6D01C"
+deps = { MoveStdlib = "MoveStdlib_2" }
 
 [pinned.testnet.oronyx]
 source = { root = true }
 use_environment = "testnet"
-manifest_digest = "69FFFB86D188816FD41D333CB80F0ADAFB5F41E7DD3154438C8344F99B544CDA"
-deps = { Sui = "Sui", SuiSystem = "SuiSystem" }
+manifest_digest = "865FA659D1DD4E7F1706AC03F6C1887DEA37641B63FB8A7DE12BE0402F1EE6A4"
+deps = { CetusClmm = "CetusClmm", Sui = "Sui_2", SuiSystem = "SuiSystem", std = "MoveStdlib_2" }
