@@ -1,13 +1,9 @@
 # Koshirae
-
-<img width="388" height="144" alt="koshirae-logomark-bg" src="https://github.com/user-attachments/assets/f18e02fa-0ef2-43db-bc1f-1e613e1b172b" />
+<img width="432" height="144" alt="koshirae-logomark-bg" src="https://github.com/user-attachments/assets/06187a0d-4f7c-46d1-ab5d-67ec7ad2f286" />
 
 Scoped Agent Wallets on Sui — a Move-based trust layer for autonomous
 financial agents, letting a user define exactly what an agent is allowed to
 do with their funds, then enforcing that boundary on-chain.
-
-> "They were born of nothingness, turning chaos into order. They define the
-> rules and destiny of all things."
 
 Team Evernight — MUBA Blockchain Hackathon 2026
 
