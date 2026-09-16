@@ -6,6 +6,7 @@ const baseIntentFields = {
   amount: CoinAmount,
   operatorCapId: SuiObjectID,
   agentReportedRisk: z.number().int().min(0).max(255).optional(),
+  requestedPendingWindowMs: z.number().int().positive().optional(), // if omitted, defer entirely to cap's own ceiling
 };
 
 export const SubmitIntentRequest = z.discriminatedUnion("actionType", [
@@ -28,7 +29,7 @@ export const SubmitIntentRequest = z.discriminatedUnion("actionType", [
   }), //No coinType, always SUI
   z.object({
     actionType: z.literal("cetusSwap"),
-    coinType: CoinType,
+    coinTypeIn: CoinType, // which side of the coin type pair they are selling, api derives pair from pool object itself
     idempotencyKey: z.string(),
     ...baseIntentFields,
   }),

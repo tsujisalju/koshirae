@@ -14,8 +14,8 @@ import { ORONYX_PACKAGE_ID, suiClient } from "../chain/client";
 import { intents } from "../db/schema";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
-import { SUI_TYPE_ARG } from "@mysten/sui/utils";
 import { buildApprovalTransaction } from "../ptb/build-approval";
+import { resolveIntentCoinType } from "../intent-coin-type";
 
 export const intentsRouter = Router();
 
@@ -65,8 +65,7 @@ intentsRouter.post("/agent-caps/:agentCapId/intents", async (req, res) => {
   if (!agentCap.allowedTargets.includes(request.target))
     return res.status(403).json({ error: "target_not_allowed" });
 
-  const coinType =
-    request.actionType === "stake" ? SUI_TYPE_ARG : request.coinType;
+  const coinType = resolveIntentCoinType(request);
   if (!agentCap.limits[coinType])
     return res.status(403).json({ error: "coin_type_not_allowed" });
 
@@ -75,7 +74,7 @@ intentsRouter.post("/agent-caps/:agentCapId/intents", async (req, res) => {
   const status =
     riskScore > agentCap.riskThreshold ? "pending_approval" : "ready";
 
-  const tx = buildIntentTransaction({
+  const tx = await buildIntentTransaction({
     agentCapId,
     vaultId: agentCap.vaultId,
     request,
@@ -135,8 +134,7 @@ intentsRouter.post("/intents/:id/submitted", async (req, res) => {
 
   let pendingActionId: string | undefined;
   if (succeeded && row.status === "pending_approval") {
-    const coinType =
-      row.request.actionType === "stake" ? SUI_TYPE_ARG : row.request.coinType;
+    const coinType = resolveIntentCoinType(row.request);
     pendingActionId = await findCreatedObjectId(
       txDigest,
       `${ORONYX_PACKAGE_ID}::capability::PendingAction<${coinType}>`,
@@ -175,17 +173,10 @@ intentsRouter.post("/intents/:id/approve", async (req, res) => {
   const intent = rowToIntent(row);
   const agentCap = await fetchAgentCap(intent.agentCapId);
 
-  const operatorAddress =
-    intent.request.actionType === "cetusSwap"
-      ? await fetchOperatorCapOwner(intent.request.operatorCapId)
-      : undefined;
-
-  const tx = buildApprovalTransaction({
+  const tx = await buildApprovalTransaction({
     intent,
     agentCapId: intent.agentCapId,
     vaultId: agentCap.vaultId,
-    ownerAddress: agentCap.owner,
-    operatorAddress,
   });
   const txBytes = await tx.build({ client: suiClient });
   return res

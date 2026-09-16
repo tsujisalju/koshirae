@@ -71,6 +71,7 @@ const AgentCapBcs = bcs.struct("AgentCap", {
   expiryMs: bcs.u64(),
   active: bcs.bool(),
   lastNonce: bcs.u64(),
+  maxPendingWindowMs: bcs.u64(),
 });
 
 const OperatorCapBcs = bcs.struct("OperatorCap", {
@@ -122,6 +123,7 @@ export async function fetchAgentCap(id: string): Promise<AgentCap> {
     expiryMs: Number(f.expiryMs),
     active: f.active,
     lastNonce: Number(f.lastNonce),
+    maxPendingWindowMs: Number(f.maxPendingWindowMs),
   });
 }
 
@@ -176,4 +178,13 @@ export async function findCreatedObjectId(
       c.objectType.startsWith(typePrefix),
   );
   return created?.objectId;
+}
+
+export async function fetchPoolCoinTypes(
+  poolId: string,
+): Promise<{ coinTypeA: string; coinTypeB: string }> {
+  const obj = await suiClient.core.getObject({ objectId: poolId });
+  const match = /Pool<(.+),\s*(.+)>$/.exec(obj.object.type ?? "");
+  if (!match) throw new Error(`Could not parse pool coin types from ${poolId}`);
+  return { coinTypeA: match[1].trim(), coinTypeB: match[2].trim() };
 }

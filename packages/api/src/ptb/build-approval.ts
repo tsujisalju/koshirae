@@ -1,7 +1,8 @@
 import { SUI_TYPE_ARG } from "@mysten/sui/utils";
 import { Intent } from "@oronyx/core";
 import { Transaction } from "@mysten/sui/transactions";
-import { ORONYX_PACKAGE_ID } from "../chain/client";
+import { CETUS_GLOBAL_CONFIG_ID, ORONYX_PACKAGE_ID } from "../chain/client";
+import { fetchPoolCoinTypes } from "../chain/reads";
 
 const SUI_SYSTEM_STATE_ID = "0x5";
 const SUI_STAKING_PACKAGE_ID = "0x3";
@@ -10,61 +11,72 @@ interface BuildApprovalParams {
   intent: Intent;
   agentCapId: string;
   vaultId: string;
-  ownerAddress: string;
-  operatorAddress?: string;
 }
 // approve_pending only releases funds, where they go next mirrors
 // the execute_* wrapper the original intent would have used.
-export function buildApprovalTransaction({
+export async function buildApprovalTransaction({
   intent,
   agentCapId,
   vaultId,
-  ownerAddress,
-  operatorAddress,
 }: BuildApprovalParams) {
   if (!intent.pendingActionId)
     throw new Error("Intent has no recorded PendingAction id");
   const { request } = intent;
-  const coinType =
-    request.actionType === "stake" ? SUI_TYPE_ARG : request.coinType;
-
   const tx = new Transaction();
-  const [released] = tx.moveCall({
-    target: `${ORONYX_PACKAGE_ID}::capability::approve_pending`,
-    typeArguments: [coinType],
-    arguments: [
-      tx.object(intent.pendingActionId),
-      tx.object(agentCapId),
-      tx.object(vaultId),
-    ],
-  });
+  const pendingArg = tx.object(intent.pendingActionId);
 
   switch (request.actionType) {
     case "transfer":
-      tx.transferObjects([released], tx.pure.address(request.target));
+      tx.moveCall({
+        target: `${ORONYX_PACKAGE_ID}::capability::approve_pending_and_send`,
+        typeArguments: [request.coinType],
+        arguments: [
+          pendingArg,
+          tx.object(agentCapId),
+          tx.object(vaultId),
+          tx.object.clock(),
+        ],
+      });
       break;
     case "mockSwap":
+      const isSuiIn = request.coinType === SUI_TYPE_ARG;
       tx.moveCall({
-        target: `${ORONYX_PACKAGE_ID}::capability::deposit`,
-        typeArguments: [coinType],
-        arguments: [tx.object(vaultId), released],
+        target: `${ORONYX_PACKAGE_ID}::capability::${isSuiIn ? "approve_and_finish_mock_swap_sui_to_usdc" : "approve_and_finish_mock_swap_usdc_to_sui"}`,
+        arguments: [
+          pendingArg,
+          tx.object(agentCapId),
+          tx.object(vaultId),
+          tx.object(request.target),
+          tx.object.clock(),
+        ],
       });
       break;
     case "cetusSwap":
-      if (!operatorAddress)
-        throw new Error("operatorAddress required for cetusSwap approval");
-      tx.transferObjects([released], tx.pure.address(operatorAddress));
-      break;
-    case "stake": {
-      const [staked] = tx.moveCall({
-        target: `${SUI_STAKING_PACKAGE_ID}::sui_system::request_add_stake_non_entry`,
+      const { coinTypeA, coinTypeB } = await fetchPoolCoinTypes(request.target);
+      const inIsA = request.coinTypeIn === coinTypeA;
+      tx.moveCall({
+        target: `${ORONYX_PACKAGE_ID}::capability::${inIsA ? "approve_and_finish_cetus_swap_a_to_b" : "approve_and_finish_cetus_swap_b_to_a"}`,
         arguments: [
-          tx.object(SUI_SYSTEM_STATE_ID),
-          released,
-          tx.pure.address(request.target),
+          pendingArg,
+          tx.object(agentCapId),
+          tx.object(vaultId),
+          tx.object(CETUS_GLOBAL_CONFIG_ID!),
+          tx.object(request.target),
+          tx.object.clock(),
         ],
       });
-      tx.transferObjects([staked], tx.pure.address(ownerAddress));
+      break;
+    case "stake": {
+      tx.moveCall({
+        target: `${ORONYX_PACKAGE_ID}::capability::approve_and_finish_stake`,
+        arguments: [
+          pendingArg,
+          tx.object(agentCapId),
+          tx.object(vaultId),
+          tx.object(SUI_SYSTEM_STATE_ID),
+          tx.object.clock(),
+        ],
+      });
       break;
     }
   }

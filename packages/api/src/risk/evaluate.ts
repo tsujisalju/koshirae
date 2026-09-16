@@ -1,5 +1,5 @@
-import { SUI_TYPE_ARG } from "@mysten/sui/utils";
 import { AgentCap, SubmitIntentRequest } from "@oronyx/core";
+import { resolveIntentCoinType } from "../intent-coin-type";
 
 export interface RiskContent {
   agentCap: AgentCap;
@@ -12,8 +12,7 @@ export const mechanicalRiskEvaluator: RiskEvaluator = ({
   agentCap,
   request,
 }) => {
-  const coinType =
-    request.actionType === "stake" ? SUI_TYPE_ARG : request.coinType;
+  const coinType = resolveIntentCoinType(request);
   const limits = agentCap.limits[coinType];
 
   let score = 0;
