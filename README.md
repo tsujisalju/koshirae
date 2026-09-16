@@ -1,6 +1,6 @@
-# Oronyx
+# Koshirae
 
-<img width="388" height="144" alt="oronyx-logomark-bg" src="https://github.com/user-attachments/assets/f18e02fa-0ef2-43db-bc1f-1e613e1b172b" />
+<img width="388" height="144" alt="koshirae-logomark-bg" src="https://github.com/user-attachments/assets/f18e02fa-0ef2-43db-bc1f-1e613e1b172b" />
 
 Scoped Agent Wallets on Sui — a Move-based trust layer for autonomous
 financial agents, letting a user define exactly what an agent is allowed to
@@ -24,13 +24,13 @@ locked out of funds entirely and lose the automation. There's no middle
 ground where a user can say "you may spend up to X per transaction, only on
 these actions, only with these counterparties" and have that boundary
 actually hold — enforced by something other than the agent's own backend
-code, which could be buggy, compromised, or simply wrong. Oronyx exists to
+code, which could be buggy, compromised, or simply wrong. Koshirae exists to
 close that gap: policy enforcement that lives on-chain, not in a server the
 user has to trust.
 
 ## What this is
 
-An agent shouldn't need a blank check to be useful. Oronyx lets a user set
+An agent shouldn't need a blank check to be useful. Koshirae lets a user set
 spending limits, allowed actions, allowed targets, and a risk threshold for
 an AI agent acting on their behalf — encoded as an on-chain capability
 object, not just a UI promise. Actions within policy execute automatically;
@@ -52,7 +52,7 @@ funds, so there's no window where a backend could skip the check. See
 **Capability object pattern.** The `AgentCap` object encodes what an agent
 is allowed to do — spending limits, an action allowlist, a target allowlist,
 and a risk threshold — and every fund-moving call requires the caller to
-present it, in the classic Move capability style. Oronyx makes one
+present it, in the classic Move capability style. Koshirae makes one
 deliberate departure from the textbook version: `AgentCap` is a **shared**
 object with explicit `owner` and `operator` address fields, rather than an
 object owned outright by the operator. That's because the operator (the
@@ -81,7 +81,7 @@ payment, and the executor submits the fully-signed bundle
 station never reaches the browser — it lives only in the executor service.
 See `frontend/lib/sponsored-transaction.ts` and `executor/src/enoki.ts`.
 
-**External DeFi platform integrations.** Oronyx implements a swap action on Cetus
+**External DeFi platform integrations.** Koshirae implements a swap action on Cetus
 DEX and reads pool price changes on Sui DeepBook, supplying them as market triggers
 for agent decisions.
 
@@ -142,9 +142,9 @@ cp .env.example .env   # fill in the values below
 npm run dev             # runs src/executeAgentAction.ts via tsx
 ```
 
-Required env vars: `ORONYX_PACKAGE_ID`, `ORONYX_OPERATOR_KEY`,
-`ORONYX_ENOKI_PRIVATE_API_KEY` (required for the `/sponsor` and
-`/execute-sponsored` endpoints), and optionally `ORONYX_FULLNODE_URL`. See
+Required env vars: `KOSHIRAE_PACKAGE_ID`, `KOSHIRAE_OPERATOR_KEY`,
+`KOSHIRAE_ENOKI_PRIVATE_API_KEY` (required for the `/sponsor` and
+`/execute-sponsored` endpoints), and optionally `KOSHIRAE_FULLNODE_URL`. See
 `executor/README.md`.
 
 **Frontend**
@@ -158,8 +158,8 @@ npm run dev
 
 Required env vars (see `frontend/.env.example`): `NEXT_PUBLIC_ENOKI_API_KEY`,
 `NEXT_PUBLIC_GOOGLE_CLIENT_ID` (zkLogin Google sign-in),
-`NEXT_PUBLIC_ORONYX_PACKAGE_ID`, `NEXT_PUBLIC_ORONYX_OPERATOR_ADDR`,
-`NEXT_PUBLIC_ORONYX_MOCK_POOL_ID`, `NEXT_PUBLIC_EXECUTOR_URL`,
+`NEXT_PUBLIC_KOSHIRAE_PACKAGE_ID`, `NEXT_PUBLIC_KOSHIRAE_OPERATOR_ADDR`,
+`NEXT_PUBLIC_KOSHIRAE_MOCK_POOL_ID`, `NEXT_PUBLIC_EXECUTOR_URL`,
 `NEXT_PUBLIC_AGENT_SERVICE_URL`.
 
 **Agent service**

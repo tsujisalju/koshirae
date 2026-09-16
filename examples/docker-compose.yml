@@ -23,7 +23,7 @@ services:
     volumes:
       - ./reference-agent:/app
     environment:
-      - ORONYX_EXECUTOR_URL=http://executor:4000
+      - KOSHIRAE_EXECUTOR_URL=http://executor:4000
     env_file:
       - ./reference-agent/.env
     depends_on:

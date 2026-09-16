@@ -5,10 +5,10 @@ import {
   CoinLimitsInput,
   SuiAddress,
   VaultInput,
-} from "@oronyx/core";
+} from "@koshirae/core";
 import { Router } from "express";
 import { z } from "zod";
-import { ORONYX_PACKAGE_ID, suiClient } from "../chain/client";
+import { KOSHIRAE_PACKAGE_ID, suiClient } from "../chain/client";
 import { fetchAgentCap } from "../chain/reads";
 
 export const agentCapsRouter = Router();
@@ -26,7 +26,7 @@ function addCreateAgentCapCall(
   input: z.infer<typeof AgentCapInputWithoutVault>,
 ) {
   tx.moveCall({
-    target: `${ORONYX_PACKAGE_ID}::capability::create_agent_cap_for_vault`,
+    target: `${KOSHIRAE_PACKAGE_ID}::capability::create_agent_cap_for_vault`,
     arguments: [
       vaultArg,
       tx.pure.u64(input.periodLengthMs),
@@ -54,12 +54,12 @@ agentCapsRouter.post("/agent-caps", async (req, res) => {
 
   const tx = new Transaction();
   const [vaultArg] = tx.moveCall({
-    target: `${ORONYX_PACKAGE_ID}::capability::new_vault`,
+    target: `${KOSHIRAE_PACKAGE_ID}::capability::new_vault`,
     arguments: [tx.pure.u64(vault.periodLengthMs)],
   });
   addCreateAgentCapCall(tx, vaultArg, agentCap);
   tx.moveCall({
-    target: `${ORONYX_PACKAGE_ID}::capability::share_vault`,
+    target: `${KOSHIRAE_PACKAGE_ID}::capability::share_vault`,
     arguments: [vaultArg],
   });
 
@@ -96,7 +96,7 @@ agentCapsRouter.post("/agent-caps/:agentCapId/operators", async (req, res) => {
 
   const tx = new Transaction();
   tx.moveCall({
-    target: `${ORONYX_PACKAGE_ID}::capability::mint_operator_cap`,
+    target: `${KOSHIRAE_PACKAGE_ID}::capability::mint_operator_cap`,
     arguments: [
       tx.object(req.params.agentCapId),
       tx.pure.address(parsed.data.operator),
@@ -113,7 +113,7 @@ agentCapsRouter.post(
   async (req, res) => {
     const tx = new Transaction();
     tx.moveCall({
-      target: `${ORONYX_PACKAGE_ID}::capability::revoke_operator`,
+      target: `${KOSHIRAE_PACKAGE_ID}::capability::revoke_operator`,
       arguments: [tx.object(req.params.agentCapId)],
     });
     const txBytes = await tx.build({ client: suiClient });
@@ -145,7 +145,7 @@ agentCapsRouter.post(
 
     const tx = new Transaction();
     tx.moveCall({
-      target: `${ORONYX_PACKAGE_ID}::capability::add_vault_coin_limits`,
+      target: `${KOSHIRAE_PACKAGE_ID}::capability::add_vault_coin_limits`,
       typeArguments: [req.params.coinType],
       arguments: [
         tx.object(req.params.vaultId),
@@ -174,7 +174,7 @@ agentCapsRouter.patch(
     const tx = new Transaction();
     if (parsed.data.spendingLimitPerTx !== undefined) {
       tx.moveCall({
-        target: `${ORONYX_PACKAGE_ID}::capability::update_vault_spending_limit_per_tx`,
+        target: `${KOSHIRAE_PACKAGE_ID}::capability::update_vault_spending_limit_per_tx`,
         typeArguments: [req.params.coinType],
         arguments: [
           tx.object(req.params.vaultId),
@@ -184,7 +184,7 @@ agentCapsRouter.patch(
     }
     if (parsed.data.spendingLimitPeriod !== undefined) {
       tx.moveCall({
-        target: `${ORONYX_PACKAGE_ID}::capability::update_vault_spending_limit_period`,
+        target: `${KOSHIRAE_PACKAGE_ID}::capability::update_vault_spending_limit_period`,
         typeArguments: [req.params.coinType],
         arguments: [
           tx.object(req.params.vaultId),
@@ -204,7 +204,7 @@ agentCapsRouter.delete(
   async (req, res) => {
     const tx = new Transaction();
     tx.moveCall({
-      target: `${ORONYX_PACKAGE_ID}::capability::remove_vault_coin_limits`,
+      target: `${KOSHIRAE_PACKAGE_ID}::capability::remove_vault_coin_limits`,
       typeArguments: [req.params.coinType],
       arguments: [tx.object(req.params.vaultId)],
     });
@@ -227,7 +227,7 @@ agentCapsRouter.patch("/vaults/:vaultId", async (req, res) => {
 
   const tx = new Transaction();
   tx.moveCall({
-    target: `${ORONYX_PACKAGE_ID}::capability::update_vault_period_length_ms`,
+    target: `${KOSHIRAE_PACKAGE_ID}::capability::update_vault_period_length_ms`,
     arguments: [
       tx.object(req.params.vaultId),
       tx.pure.u64(parsed.data.periodLengthMs),

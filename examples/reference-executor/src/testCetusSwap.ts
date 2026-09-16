@@ -12,19 +12,19 @@ import { decodeSuiPrivateKey } from "@mysten/sui/cryptography";
  * Run with a funded testnet keypair (get SUI from the testnet faucet).
  *
  * Usage:
- *   ORONYX_OPERATOR_KEY=suiprivkey1... npm run dev -- src/testCetusSwap.ts
+ *   KOSHIRAE_OPERATOR_KEY=suiprivkey1... npm run dev -- src/testCetusSwap.ts
  * (or add a "test:cetus": "tsx src/testCetusSwap.ts" script)
  */
 
-const OPERATOR_PRIVATE_KEY = process.env.ORONYX_OPERATOR_KEY!;
+const OPERATOR_PRIVATE_KEY = process.env.KOSHIRAE_OPERATOR_KEY!;
 const FULLNODE_BASE_URL =
-  process.env.ORONYX_FULLNODE_URL ?? "https://fullnode.testnet.sui.io:443";
+  process.env.KOSHIRAE_FULLNODE_URL ?? "https://fullnode.testnet.sui.io:443";
 const NETWORK = "testnet" as const;
 
 async function main() {
   if (!OPERATOR_PRIVATE_KEY) {
     throw new Error(
-      "Set ORONYX_OPERATOR_KEY to a funded testnet keypair (suiprivkey1...) first.",
+      "Set KOSHIRAE_OPERATOR_KEY to a funded testnet keypair (suiprivkey1...) first.",
     );
   }
 
@@ -39,7 +39,7 @@ async function main() {
   console.log("Testing as:", address);
 
   const sdk = CetusClmmSDK.createSDK({ env: NETWORK });
-  const wallet = process.env.ORONYX_OPERATOR_ADDR!;
+  const wallet = process.env.KOSHIRAE_OPERATOR_ADDR!;
   sdk.setSenderAddress(wallet);
 
   // --- Discover a real testnet pool instead of hardcoding an address ---

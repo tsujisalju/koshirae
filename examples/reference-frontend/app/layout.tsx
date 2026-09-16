@@ -22,7 +22,7 @@ const flowCircular = Flow_Circular({
 const roboto = Roboto({ subsets: ["latin"], variable: "--font-sans" });
 
 export const metadata: Metadata = {
-  title: "Oronyx",
+  title: "Koshirae",
   description: "Scoped Agent Wallets on Sui Blockchain",
 };
 

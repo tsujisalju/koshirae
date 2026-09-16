@@ -24,8 +24,8 @@ from pysui.sui.sui_grpc.suimsgs.google.protobuf import Value
 
 _CONFIG_ROOT = Path(".pysui")
 _CONFIG_FILE = _CONFIG_ROOT / "PysuiConfig.json"
-_GROUP_NAME = "oronyx_grpc"
-_PROFILE_NAME = "oronyx"
+_GROUP_NAME = "koshirae_grpc"
+_PROFILE_NAME = "koshirae"
 
 
 def _bootstrap_config() -> PysuiConfiguration:

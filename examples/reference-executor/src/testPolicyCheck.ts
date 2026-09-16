@@ -4,11 +4,11 @@ import { SuiGrpcClient } from "@mysten/sui/grpc";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { decodeSuiPrivateKey } from "@mysten/sui/cryptography";
 
-const PACKAGE_ID = process.env.ORONYX_PACKAGE_ID!;
-const OPERATOR_PRIVATE_KEY = process.env.ORONYX_OPERATOR_KEY!;
-const VAULT_ID = process.env.ORONYX_VAULT_ID!;
-const CAP_ID = process.env.ORONYX_CAP_ID!;
-const TARGET_ADDRESS = process.env.ORONYX_TARGET_ADDRESS!; // must match allowed_targets from create_agent_cap
+const PACKAGE_ID = process.env.KOSHIRAE_PACKAGE_ID!;
+const OPERATOR_PRIVATE_KEY = process.env.KOSHIRAE_OPERATOR_KEY!;
+const VAULT_ID = process.env.KOSHIRAE_VAULT_ID!;
+const CAP_ID = process.env.KOSHIRAE_CAP_ID!;
+const TARGET_ADDRESS = process.env.KOSHIRAE_TARGET_ADDRESS!; // must match allowed_targets from create_agent_cap
 const CLOCK_ID = "0x6";
 
 async function main() {

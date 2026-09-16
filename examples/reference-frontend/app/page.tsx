@@ -6,7 +6,7 @@ import { ArrowRight } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import OronyxLogomark from "@/components/icons/oronyx-logomark";
+import KoshiraeLogomark from "@/components/icons/koshirae-logomark";
 import { useWalletConnection } from "@mysten/dapp-kit-react";
 import { ConnectButton } from "./dapp-kit-client-provider";
 import LandingHeader from "@/components/landing-header";
@@ -20,13 +20,13 @@ export default function Home() {
         <div className="mx-auto grid h-full max-w-7xl place-items-center px-8 py-16 lg:px-16">
           <Card className="w-full max-w-5xl border-border/70 bg-card/70 shadow-xl">
             <CardContent className="grid gap-8 p-8 md:p-12">
-              <OronyxLogomark />
+              <KoshiraeLogomark />
               <div className="max-w-3xl">
                 <h1 className="font-display text-4xl tracking-tight md:text-6xl">
                   Agentic DeFi on Your Terms
                 </h1>
                 <p className="mt-5 text-lg leading-8 text-muted-foreground">
-                  Oronyx enables autonomous asset management on Sui with scoped,
+                  Koshirae enables autonomous asset management on Sui with scoped,
                   policy-enforced agent wallets and a comprehensive audit trail.
                 </p>
               </div>
@@ -90,7 +90,7 @@ export default function Home() {
               The AI provides the intelligence. Move controls the authority.
             </h1>
             <p className="text-lg text-muted-foreground">
-              Oronyx solves this by moving policy enforcement on-chain. When a
+              Koshirae solves this by moving policy enforcement on-chain. When a
               user sets up an agent, they describe their rules in plain language
               — spending limits, which actions are allowed, which targets are
               whitelisted, how risk-averse the agent should be.
@@ -110,7 +110,7 @@ export default function Home() {
             <h1 className="text-4xl lg:text-5xl font-display">
               Here&apos;s how it works.
             </h1>
-            {/* TODO: Oronyx architecture flow using React Flow */}
+            {/* TODO: Koshirae architecture flow using React Flow */}
           </div>
         </div>
       </main>

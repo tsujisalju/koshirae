@@ -15,8 +15,8 @@ from pydantic import BaseModel
 from pysui.sui.sui_grpc.pgrpc_filters import Literal, build_event_filter
 from pysui.sui.sui_grpc.pgrpc_requests import ListEvents
 
-CAP_CREATED_EVENT_TYPE = f"{settings.oronyx_package_id}::capability::CapCreated"
-CAP_DEACTIVATED_EVENT_TYPE = f"{settings.oronyx_package_id}::capability::CapDeactivated"
+CAP_CREATED_EVENT_TYPE = f"{settings.koshirae_package_id}::capability::CapCreated"
+CAP_DEACTIVATED_EVENT_TYPE = f"{settings.koshirae_package_id}::capability::CapDeactivated"
 
 T = TypeVar("T", bound=BaseModel)
 

@@ -47,7 +47,7 @@ async def lifespan(_app: FastAPI):
         scheduler.shutdown(wait=False)
 
 
-app = FastAPI(title="Oronyx Agent Service", lifespan=lifespan)
+app = FastAPI(title="Koshirae Agent Service", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

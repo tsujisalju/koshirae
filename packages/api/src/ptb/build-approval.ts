@@ -1,7 +1,7 @@
 import { SUI_TYPE_ARG } from "@mysten/sui/utils";
-import { Intent } from "@oronyx/core";
+import { Intent } from "@koshirae/core";
 import { Transaction } from "@mysten/sui/transactions";
-import { CETUS_GLOBAL_CONFIG_ID, ORONYX_PACKAGE_ID } from "../chain/client";
+import { CETUS_GLOBAL_CONFIG_ID, KOSHIRAE_PACKAGE_ID } from "../chain/client";
 import { fetchPoolCoinTypes } from "../chain/reads";
 
 const SUI_SYSTEM_STATE_ID = "0x5";
@@ -28,7 +28,7 @@ export async function buildApprovalTransaction({
   switch (request.actionType) {
     case "transfer":
       tx.moveCall({
-        target: `${ORONYX_PACKAGE_ID}::capability::approve_pending_and_send`,
+        target: `${KOSHIRAE_PACKAGE_ID}::capability::approve_pending_and_send`,
         typeArguments: [request.coinType],
         arguments: [
           pendingArg,
@@ -41,7 +41,7 @@ export async function buildApprovalTransaction({
     case "mockSwap":
       const isSuiIn = request.coinType === SUI_TYPE_ARG;
       tx.moveCall({
-        target: `${ORONYX_PACKAGE_ID}::capability::${isSuiIn ? "approve_and_finish_mock_swap_sui_to_usdc" : "approve_and_finish_mock_swap_usdc_to_sui"}`,
+        target: `${KOSHIRAE_PACKAGE_ID}::capability::${isSuiIn ? "approve_and_finish_mock_swap_sui_to_usdc" : "approve_and_finish_mock_swap_usdc_to_sui"}`,
         arguments: [
           pendingArg,
           tx.object(agentCapId),
@@ -55,7 +55,7 @@ export async function buildApprovalTransaction({
       const { coinTypeA, coinTypeB } = await fetchPoolCoinTypes(request.target);
       const inIsA = request.coinTypeIn === coinTypeA;
       tx.moveCall({
-        target: `${ORONYX_PACKAGE_ID}::capability::${inIsA ? "approve_and_finish_cetus_swap_a_to_b" : "approve_and_finish_cetus_swap_b_to_a"}`,
+        target: `${KOSHIRAE_PACKAGE_ID}::capability::${inIsA ? "approve_and_finish_cetus_swap_a_to_b" : "approve_and_finish_cetus_swap_b_to_a"}`,
         arguments: [
           pendingArg,
           tx.object(agentCapId),
@@ -68,7 +68,7 @@ export async function buildApprovalTransaction({
       break;
     case "stake": {
       tx.moveCall({
-        target: `${ORONYX_PACKAGE_ID}::capability::approve_and_finish_stake`,
+        target: `${KOSHIRAE_PACKAGE_ID}::capability::approve_and_finish_stake`,
         arguments: [
           pendingArg,
           tx.object(agentCapId),

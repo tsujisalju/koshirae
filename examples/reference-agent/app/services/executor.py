@@ -6,7 +6,7 @@ from app.models.policy import AgentActionDecision
 
 
 EXECUTOR_URL = os.getenv(
-    "ORONYX_EXECUTOR_URL",
+    "KOSHIRAE_EXECUTOR_URL",
     "http://localhost:4000",
 )
 

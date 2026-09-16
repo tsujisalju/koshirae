@@ -11,9 +11,9 @@ class Settings(BaseSettings):
     sui_grpc_url: str = Field(
         default="fullnode.testnet.sui.io:443", alias="SUI_GRPC_URL"
     )
-    oronyx_package_id: str = Field(default="", alias="ORONYX_PACKAGE_ID")
+    koshirae_package_id: str = Field(default="", alias="KOSHIRAE_PACKAGE_ID")
     executor_url: str = Field(
-        default="http://executor:4000", alias="ORONYX_EXECUTOR_URL"
+        default="http://executor:4000", alias="KOSHIRAE_EXECUTOR_URL"
     )
     # DeepBook pool used purely as a price signal for the swap trigger —
     # unrelated to the on-chain mock-pool target an agent actually swaps

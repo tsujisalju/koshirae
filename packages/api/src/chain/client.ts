@@ -10,9 +10,9 @@ export const suiClient = new SuiGrpcClient({
   baseUrl: SUI_RPC_URL,
 });
 
-export const ORONYX_PACKAGE_ID = process.env.ORONYX_PACKAGE_ID;
-if (!ORONYX_PACKAGE_ID) {
-  throw new Error("ORONYX_PACKAGE_ID is not set");
+export const KOSHIRAE_PACKAGE_ID = process.env.KOSHIRAE_PACKAGE_ID;
+if (!KOSHIRAE_PACKAGE_ID) {
+  throw new Error("KOSHIRAE_PACKAGE_ID is not set");
 }
 
 export const CETUS_PACKAGE_ID = process.env.CETUS_PACKAGE_ID;

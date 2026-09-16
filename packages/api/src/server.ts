@@ -16,5 +16,5 @@ app.use(intentsRouter);
 
 const port = Number(process.env.PORT ?? 3001);
 app.listen(port, () => {
-  console.log(`Oronyx API listening on port ${port}`);
+  console.log(`Koshirae API listening on port ${port}`);
 });

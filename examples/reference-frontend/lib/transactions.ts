@@ -4,8 +4,8 @@ import { SUI_CLOCK_OBJECT_ID } from "@mysten/sui/utils";
 import { signAndExecuteSponsoredTransaction } from "@/lib/sponsored-transaction";
 import { AgentDetail } from "@/lib/agent-service";
 
-const PACKAGE_ID = process.env.NEXT_PUBLIC_ORONYX_PACKAGE_ID!;
-const OPERATOR_ADDR = process.env.NEXT_PUBLIC_ORONYX_OPERATOR_ADDR!;
+const PACKAGE_ID = process.env.NEXT_PUBLIC_KOSHIRAE_PACKAGE_ID!;
+const OPERATOR_ADDR = process.env.NEXT_PUBLIC_KOSHIRAE_OPERATOR_ADDR!;
 
 export async function createAgentCap({
   sender,

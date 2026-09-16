@@ -13,7 +13,7 @@ public fun agent_cap_id(cap: &OperatorCap): ID { cap.agent_cap_id }
 public fun generation(cap: &OperatorCap): u64 { cap.generation }
 
 /// Package-visible, only capability.move (same package) can construct
-/// one. Nothing outside Oronyx can forge an OperatorCap directly.
+/// one. Nothing outside Koshirae can forge an OperatorCap directly.
 public(package) fun new(agent_cap_id: ID, generation: u64, ctx: &mut TxContext): OperatorCap {
     OperatorCap {
         id: object::new(ctx),

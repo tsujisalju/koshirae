@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-import OronyxLogomark from "./icons/oronyx-logomark";
+import KoshiraeLogomark from "./icons/koshirae-logomark";
 import { Button, buttonVariants } from "./ui/button";
 import { useWalletConnection } from "@mysten/dapp-kit-react";
 import { cn } from "@/lib/utils";
@@ -26,7 +26,7 @@ export default function LandingHeader() {
     <header className="sticky top-0 z-40 w-full backdrop-blur-lg">
       <div className="mx-auto flex w-full max-w-7xl items-center justify-between px-8 py-4">
         <Link href="/">
-          <OronyxLogomark />
+          <KoshiraeLogomark />
         </Link>
         <div className="flex flex-row gap-4 items-center">
           {connection.isConnected && (

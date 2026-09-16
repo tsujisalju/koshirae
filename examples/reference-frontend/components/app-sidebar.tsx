@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Bot, LayoutDashboard, ScrollText, ShieldCheck } from "lucide-react";
 
-import OronyxLogomark from "@/components/icons/oronyx-logomark";
+import KoshiraeLogomark from "@/components/icons/koshirae-logomark";
 import { cn } from "@/lib/utils";
 
 const navigation = [
@@ -48,7 +48,7 @@ export default function AppSidebar() {
             href="/"
             className="inline-flex rounded-md transition-opacity hover:opacity-90"
           >
-            <OronyxLogomark />
+            <KoshiraeLogomark />
           </Link>
         </div>
 

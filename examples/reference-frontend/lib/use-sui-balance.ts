@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useCurrentClient } from "@mysten/dapp-kit-react";
 
-const BALANCE_CHANGED_EVENT = "oronyx:sui-balance-changed";
+const BALANCE_CHANGED_EVENT = "koshirae:sui-balance-changed";
 
 // Call after any transaction that moves SUI in or out of the connected
 // wallet (e.g. a vault deposit/withdraw). Every mounted useSuiBalance()

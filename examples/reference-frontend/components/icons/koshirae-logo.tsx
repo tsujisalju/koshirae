@@ -1,4 +1,4 @@
-export default function OronyxLogo({ className }: { className?: string }) {
+export default function KoshiraeLogo({ className }: { className?: string }) {
   return (
     <svg
       className={className}
