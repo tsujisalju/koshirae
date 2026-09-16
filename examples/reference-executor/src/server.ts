@@ -15,7 +15,7 @@ function enokiErrorDetails(err: unknown) {
   return { error: err instanceof Error ? err.message : String(err) };
 }
 
-const PORT = Number(process.env.ORONYX_EXECUTOR_PORT ?? 4000);
+const PORT = Number(process.env.KOSHIRAE_EXECUTOR_PORT ?? 4000);
 
 const app = express();
 app.use(cors());
@@ -135,5 +135,5 @@ app.get("/health", (_req: Request, res: Response) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`Oronyx executor listening on port ${PORT}`);
+  console.log(`Koshirae executor listening on port ${PORT}`);
 });

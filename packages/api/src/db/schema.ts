@@ -6,7 +6,7 @@ import {
   timestamp,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-import type { SubmitIntentRequest } from "@oronyx/core";
+import type { SubmitIntentRequest } from "@koshirae/core";
 
 export const intents = pgTable(
   "intents",

@@ -8,13 +8,13 @@ from dotenv import load_dotenv
 _ = load_dotenv()
 
 
-MODEL = os.getenv("ORONYX_LLM_MODEL", "claude-haiku-4-5-20251001")
+MODEL = os.getenv("KOSHIRAE_LLM_MODEL", "claude-haiku-4-5-20251001")
 
 
 POLICY_TOOL: ToolParam = {
     "name": "parse_agent_policy",
     "description": (
-        "Extract a user's natural-language Oronyx agent policy into "
+        "Extract a user's natural-language Koshirae agent policy into "
         "structured policy fields. Do not invent blockchain addresses "
         "or targets."
     ),
@@ -89,7 +89,7 @@ POLICY_TOOL: ToolParam = {
 
 
 SYSTEM_PROMPT = """
-You are the policy parser for Oronyx.
+You are the policy parser for Koshirae.
 
 Your job is to extract the user's natural-language policy
 into the structured format provided by the parse_agent_policy tool.
@@ -116,7 +116,7 @@ Rules:
 DECISION_TOOL: ToolParam = {
     "name": "make_agent_decision",
     "description": (
-        "Decide whether an autonomous Oronyx agent should act on a "
+        "Decide whether an autonomous Koshirae agent should act on a "
         "triggering market/validator event, given its policy and recent "
         "activity. Never propose a target outside the agent's allowed "
         "targets, or an amount outside its spending limits."
@@ -172,7 +172,7 @@ DECISION_TOOL: ToolParam = {
 
 
 DECISION_SYSTEM_PROMPT = """
-You are the decision engine for an autonomous Oronyx agent.
+You are the decision engine for an autonomous Koshirae agent.
 
 You are given: the triggering event (a price move or validator/APY
 change), the agent's policy (spending limits, allowed targets, risk

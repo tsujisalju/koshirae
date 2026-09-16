@@ -65,7 +65,7 @@ const CETUS_SWAP_CODE = 3;
 type ConfigMode = "natural" | "advanced";
 
 const MIST_PER_SUI = 1_000_000_000;
-const MOCK_POOL_ID = process.env.NEXT_PUBLIC_ORONYX_MOCK_POOL_ID!;
+const MOCK_POOL_ID = process.env.NEXT_PUBLIC_KOSHIRAE_MOCK_POOL_ID!;
 
 export default function NewAgentPage() {
   const router = useRouter();
@@ -488,7 +488,7 @@ export default function NewAgentPage() {
                     <p className="mt-1 text-sm text-muted-foreground">
                       {policyGenerated
                         ? "Policy generated. Edit your description and regenerate to make changes, or switch to the Advanced tab to fine-tune individual fields."
-                        : "Oronyx interprets your instructions and converts them into a structured policy. You can review and edit every field before the agent is created."}
+                        : "Koshirae interprets your instructions and converts them into a structured policy. You can review and edit every field before the agent is created."}
                     </p>
                   </div>
 

@@ -1,7 +1,7 @@
-# Oronyx — Move Contract
+# Koshirae — Move Contract
 
 Sui Move package implementing scoped, policy-enforced agent wallets. This is
-the on-chain trust layer for Oronyx: it defines what an autonomous agent is
+the on-chain trust layer for Koshirae: it defines what an autonomous agent is
 allowed to do with a user's funds, and enforces that boundary at the
 transaction level rather than relying on off-chain promises.
 

@@ -1,4 +1,4 @@
-import { Intent, SubmitIntentRequest } from "@oronyx/core";
+import { Intent, SubmitIntentRequest } from "@koshirae/core";
 import { randomUUID } from "crypto";
 import { Router } from "express";
 import { db } from "../db/client";
@@ -10,7 +10,7 @@ import {
 } from "../chain/reads";
 import { mechanicalRiskEvaluator } from "../risk/evaluate";
 import { buildIntentTransaction } from "../ptb/build-intent";
-import { ORONYX_PACKAGE_ID, suiClient } from "../chain/client";
+import { KOSHIRAE_PACKAGE_ID, suiClient } from "../chain/client";
 import { intents } from "../db/schema";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
@@ -137,7 +137,7 @@ intentsRouter.post("/intents/:id/submitted", async (req, res) => {
     const coinType = resolveIntentCoinType(row.request);
     pendingActionId = await findCreatedObjectId(
       txDigest,
-      `${ORONYX_PACKAGE_ID}::capability::PendingAction<${coinType}>`,
+      `${KOSHIRAE_PACKAGE_ID}::capability::PendingAction<${coinType}>`,
     );
   }
 

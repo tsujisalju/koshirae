@@ -8,5 +8,5 @@ import { EnokiClient } from "@mysten/enoki";
 // is not authorized for the gas station; the private key must never reach
 // the browser, so these calls live here instead.
 export const enokiClient = new EnokiClient({
-  apiKey: process.env.ORONYX_ENOKI_PRIVATE_API_KEY!,
+  apiKey: process.env.KOSHIRAE_ENOKI_PRIVATE_API_KEY!,
 });

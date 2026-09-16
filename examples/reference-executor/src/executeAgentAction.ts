@@ -7,10 +7,10 @@ import CetusClmmSDK from "@cetusprotocol/sui-clmm-sdk";
 import { Percentage, adjustForSlippage, d } from "@cetusprotocol/common-sdk";
 import BN from "bn.js";
 
-const PACKAGE_ID = process.env.ORONYX_PACKAGE_ID!;
-const OPERATOR_PRIVATE_KEY = process.env.ORONYX_OPERATOR_KEY!; // suiprivkey1...
+const PACKAGE_ID = process.env.KOSHIRAE_PACKAGE_ID!;
+const OPERATOR_PRIVATE_KEY = process.env.KOSHIRAE_OPERATOR_KEY!; // suiprivkey1...
 const FULLNODE_BASE_URL =
-  process.env.ORONYX_FULLNODE_URL ?? "https://fullnode.testnet.sui.io:443";
+  process.env.KOSHIRAE_FULLNODE_URL ?? "https://fullnode.testnet.sui.io:443";
 const NETWORK = "testnet" as const;
 
 const CLOCK_ID = "0x6";
@@ -152,7 +152,7 @@ async function runMockSwap(
 // with SUI on one side — price ratios too skewed for our test amounts to
 // produce a nonzero output. No usable pool exists on testnet as of this
 // writing. Default to the mock DEX for demo reliability; set
-// ORONYX_USE_MOCK_SWAP=false to exercise the real Cetus path instead (for
+// KOSHIRAE_USE_MOCK_SWAP=false to exercise the real Cetus path instead (for
 // showing the integration works, separate from the demo itself).
 
 // === Two-step path — Cetus only, see capability.move's docstring on

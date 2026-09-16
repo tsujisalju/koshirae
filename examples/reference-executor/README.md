@@ -1,7 +1,7 @@
-# Oronyx — Executor
+# Koshirae — Executor
 
 TypeScript service responsible for constructing and submitting Sui
-transactions on behalf of an agent. This is the only part of Oronyx that
+transactions on behalf of an agent. This is the only part of Koshirae that
 signs and submits on-chain transactions — `agent-service` (Python) decides
 _what_ an agent should do; this service decides _how_ to actually do it
 on-chain and executes it.
@@ -66,10 +66,10 @@ Required environment variables:
 
 | Variable                       | Description                                                                          |
 | ------------------------------ | ------------------------------------------------------------------------------------- |
-| `ORONYX_PACKAGE_ID`            | Published package ID from `sui move publish` (see `/move/README.md`)                 |
-| `ORONYX_OPERATOR_KEY`          | Operator's private key, `suiprivkey1...` format                                       |
-| `ORONYX_ENOKI_PRIVATE_API_KEY` | Enoki private API key, required by `/sponsor` and `/execute-sponsored` (see `src/enoki.ts`) |
-| `ORONYX_FULLNODE_URL`          | Optional override; defaults to Sui testnet fullnode                                   |
+| `KOSHIRAE_PACKAGE_ID`            | Published package ID from `sui move publish` (see `/move/README.md`)                 |
+| `KOSHIRAE_OPERATOR_KEY`          | Operator's private key, `suiprivkey1...` format                                       |
+| `KOSHIRAE_ENOKI_PRIVATE_API_KEY` | Enoki private API key, required by `/sponsor` and `/execute-sponsored` (see `src/enoki.ts`) |
+| `KOSHIRAE_FULLNODE_URL`          | Optional override; defaults to Sui testnet fullnode                                   |
 
 ## Why Cetus alone is two transactions
 

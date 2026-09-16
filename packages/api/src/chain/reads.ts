@@ -5,7 +5,7 @@ import {
   CoinLimitsState,
   OperatorCap,
   Vault,
-} from "@oronyx/core";
+} from "@koshirae/core";
 import { bcs } from "@mysten/sui/bcs";
 import { suiClient } from "./client";
 

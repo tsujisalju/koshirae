@@ -1,5 +1,5 @@
 {
-  "name": "@oronyx/api",
+  "name": "@koshirae/api",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "@mysten/sui": "^2.29.0",
-    "@oronyx/core": "workspace:*",
+    "@koshirae/core": "workspace:*",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "drizzle-orm": "1.0.0-rc.4",

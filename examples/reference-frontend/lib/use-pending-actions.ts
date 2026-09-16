@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useCurrentClient } from "@mysten/dapp-kit-react";
 
-const PACKAGE_ID = process.env.NEXT_PUBLIC_ORONYX_PACKAGE_ID!;
+const PACKAGE_ID = process.env.NEXT_PUBLIC_KOSHIRAE_PACKAGE_ID!;
 const PENDING_ACTION_TYPE = `${PACKAGE_ID}::capability::PendingAction`;
 
 export interface PendingAction {

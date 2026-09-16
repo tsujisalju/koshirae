@@ -1,4 +1,4 @@
-import { AgentCap, SubmitIntentRequest } from "@oronyx/core";
+import { AgentCap, SubmitIntentRequest } from "@koshirae/core";
 import { resolveIntentCoinType } from "../intent-coin-type";
 
 export interface RiskContent {

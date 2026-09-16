@@ -17,7 +17,7 @@ fun init(otw: MOCK_USDC, ctx: &mut TxContext) {
         6,
         b"mUSDC".to_string(),
         b"Mock USDC".to_string(),
-        b"Fixed-rate demo token for Oronyx's mock DEX fallback. Not real value.".to_string(),
+        b"Fixed-rate demo token for Koshirae's mock DEX fallback. Not real value.".to_string(),
         b"".to_string(),
         ctx,
     );

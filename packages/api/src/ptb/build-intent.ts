@@ -1,6 +1,6 @@
 import { Transaction } from "@mysten/sui/transactions";
-import { SubmitIntentRequest } from "@oronyx/core";
-import { CETUS_GLOBAL_CONFIG_ID, ORONYX_PACKAGE_ID } from "../chain/client";
+import { SubmitIntentRequest } from "@koshirae/core";
+import { CETUS_GLOBAL_CONFIG_ID, KOSHIRAE_PACKAGE_ID } from "../chain/client";
 import { SUI_TYPE_ARG } from "@mysten/sui/utils";
 import { fetchPoolCoinTypes } from "../chain/reads";
 
@@ -33,7 +33,7 @@ export async function buildIntentTransaction({
   switch (request.actionType) {
     case "transfer":
       tx.moveCall({
-        target: `${ORONYX_PACKAGE_ID}::capability::execute_transfer`,
+        target: `${KOSHIRAE_PACKAGE_ID}::capability::execute_transfer`,
         typeArguments: [request.coinType],
         arguments: [
           ...shared,
@@ -49,7 +49,7 @@ export async function buildIntentTransaction({
     case "mockSwap": {
       const isSuiIn = request.coinType === SUI_TYPE_ARG;
       tx.moveCall({
-        target: `${ORONYX_PACKAGE_ID}::capability::${isSuiIn ? "execute_mock_swap_sui_to_usdc" : "execute_mock_swap_usdc_to_sui"}`,
+        target: `${KOSHIRAE_PACKAGE_ID}::capability::${isSuiIn ? "execute_mock_swap_sui_to_usdc" : "execute_mock_swap_usdc_to_sui"}`,
         arguments: [
           ...shared,
           tx.object(request.target),
@@ -65,7 +65,7 @@ export async function buildIntentTransaction({
     }
     case "stake":
       tx.moveCall({
-        target: `${ORONYX_PACKAGE_ID}::capability::execute_stake`,
+        target: `${KOSHIRAE_PACKAGE_ID}::capability::execute_stake`,
         arguments: [
           ...shared,
           tx.object(SUI_SYSTEM_STATE_ID),
@@ -87,7 +87,7 @@ export async function buildIntentTransaction({
         );
       }
       tx.moveCall({
-        target: `${ORONYX_PACKAGE_ID}::capability::${inIsA ? "execute_cetus_swap_a_to_b" : "execute_cetus_swap_b_to_a"}`,
+        target: `${KOSHIRAE_PACKAGE_ID}::capability::${inIsA ? "execute_cetus_swap_a_to_b" : "execute_cetus_swap_b_to_a"}`,
         typeArguments: [coinTypeA, coinTypeB],
         arguments: [
           ...shared,

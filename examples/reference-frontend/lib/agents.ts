@@ -242,7 +242,7 @@ export const mockAgents: Agent[] = [
 
 export function loadMockAgents(): Agent[] {
   const storedAgents: Agent[] = JSON.parse(
-    localStorage.getItem("oronyx-agents") || "[]",
+    localStorage.getItem("koshirae-agents") || "[]",
   );
 
   const storedIds = new Set(storedAgents.map((agent) => agent.id));
@@ -255,7 +255,7 @@ export function loadMockAgents(): Agent[] {
 
 export function saveMockAgent(updatedAgent: Agent) {
   const storedAgents: Agent[] = JSON.parse(
-    localStorage.getItem("oronyx-agents") || "[]",
+    localStorage.getItem("koshirae-agents") || "[]",
   );
 
   const exists = storedAgents.some((agent) => agent.id === updatedAgent.id);
@@ -265,5 +265,5 @@ export function saveMockAgent(updatedAgent: Agent) {
       )
     : [...storedAgents, updatedAgent];
 
-  localStorage.setItem("oronyx-agents", JSON.stringify(nextAgents));
+  localStorage.setItem("koshirae-agents", JSON.stringify(nextAgents));
 }

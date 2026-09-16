@@ -1,5 +1,5 @@
 {
-  "name": "@oronyx/sdk",
+  "name": "@koshirae/sdk",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -7,7 +7,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@oronyx/core": "workspace:*",
+    "@koshirae/core": "workspace:*",
     "@mysten/sui": "^2.27.0"
   },
   "devDependencies": {

@@ -1,5 +1,5 @@
 import { SUI_TYPE_ARG } from "@mysten/sui/utils";
-import { SubmitIntentRequest } from "@oronyx/core";
+import { SubmitIntentRequest } from "@koshirae/core";
 
 // Resolves the coin type an intent's policy/limit checks should key off:
 // - stake is always SUI, has no coinType field at all

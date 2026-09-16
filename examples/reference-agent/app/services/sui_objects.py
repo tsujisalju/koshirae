@@ -12,8 +12,8 @@ from app.models.agent import AgentDetail
 from app.services.sui_grpc import get_client, pb_value_to_dict
 from pysui.sui.sui_grpc.pgrpc_requests import GetObjectSC
 
-AGENT_CAP_TYPE = f"{settings.oronyx_package_id}::capability::AgentCap"
-VAULT_TYPE = f"{settings.oronyx_package_id}::capability::Vault"
+AGENT_CAP_TYPE = f"{settings.koshirae_package_id}::capability::AgentCap"
+VAULT_TYPE = f"{settings.koshirae_package_id}::capability::Vault"
 
 
 class _GetObjectOrNone(GetObjectSC):
