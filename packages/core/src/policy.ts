@@ -24,6 +24,7 @@ export const AgentCapPolicyInput = z.object({
   protocolTargets: z.array(SuiAddress),
   riskThreshold: z.number().int().min(0).max(255),
   expiryMs: z.number().int().positive(),
+  maxPendingWindowMs: z.number().int().positive(),
 });
 export type AgentCapPolicyInput = z.infer<typeof AgentCapPolicyInput>;
 
@@ -41,5 +42,7 @@ export const AgentCap = z.object({
   riskThreshold: z.number().int().min(0).max(255),
   expiryMs: z.number().int().positive(),
   active: z.boolean(),
+  lastNonce: z.number().int().nonnegative(),
+  maxPendingWindowMs: z.number().int().positive(),
 });
 export type AgentCap = z.infer<typeof AgentCap>;

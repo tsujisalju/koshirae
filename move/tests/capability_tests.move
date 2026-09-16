@@ -26,9 +26,11 @@ const ECoinTypeNotInVault: u64 = 11;
 const ECoinTypeAlreadyAllowed: u64 = 12;
 const EWrongAgentCap: u64 = 13;
 const EStaleGeneration: u64 = 14;
-const EOverVaultTxLimit: u64 = 15;
+//const EOverVaultTxLimit: u64 = 15;
 const EOverVaultPeriodLimit: u64 = 16;
 const EStaleNonce: u64 = 17;
+const EPendingExpired: u64 = 18;
+const ENotExpiredYet: u64 = 19;
 
 /* Mirrors capability.move's private action-type codes. */
 const ACTION_TRANSFER: u8 = 0;
@@ -48,6 +50,7 @@ const PERIOD_LIMIT: u64 = 300_000;
 const PERIOD_LENGTH_MS: u64 = 86_400_000; // 1 day
 const RISK_THRESHOLD: u8 = 50;
 const EXPIRY_MS: u64 = 999_999_999_999;
+const MAX_PENDING_WINDOW_MS: u64 = 3_600_000; // 1 hour ceiling on AgentCap's pending window
 const MOCK_RATE_USDC_PER_SUI: u64 = 950_000;
 
 /// Standalone vault (own lifecycle now, per the shared-treasury redesign),
@@ -65,6 +68,7 @@ fun setup(scenario: &mut ts::Scenario) {
         vector[],
         RISK_THRESHOLD,
         EXPIRY_MS,
+        MAX_PENDING_WINDOW_MS,
         scenario.ctx(),
     );
     capability::share_vault(vault);
@@ -87,7 +91,7 @@ fun setup(scenario: &mut ts::Scenario) {
 /* ===== Core execution + risk flagging ===== */
 
 #[test]
-fun low_risk_action_releases_coin_to_operator() {
+fun low_risk_action_releases_coin_to_recipient() {
     let mut scenario = ts::begin(OWNER);
     setup(&mut scenario);
 
@@ -97,8 +101,8 @@ fun low_risk_action_releases_coin_to_operator() {
     let op_cap = scenario.take_from_sender<OperatorCap>();
     let clock = clock::create_for_testing(scenario.ctx());
 
-    capability::execute_cetus_swap_and_transfer_to_operator<SUI>(
-        &mut cap, &op_cap, &mut vault, TARGET, 50_000, RISK_THRESHOLD, 1, &clock, scenario.ctx(),
+    capability::execute_transfer<SUI>(
+        &mut cap, &op_cap, &mut vault, TARGET, 50_000, RISK_THRESHOLD, 1, MAX_PENDING_WINDOW_MS, &clock, scenario.ctx(),
     );
 
     ts::return_shared(vault);
@@ -106,7 +110,7 @@ fun low_risk_action_releases_coin_to_operator() {
     destroy(op_cap);
     clock.destroy_for_testing();
 
-    scenario.next_tx(OPERATOR);
+    scenario.next_tx(TARGET);
     let released = scenario.take_from_sender<Coin<SUI>>();
     assert_eq!(released.value(), 50_000);
     destroy(released);
@@ -127,26 +131,26 @@ fun high_risk_action_is_flagged_and_approve_pending_releases_funds() {
 
     let maybe_coin = capability::execute_action<SUI>(
         &mut cap, &op_cap, &mut vault, ACTION_MOCK_SWAP, TARGET, 50_000,
-        RISK_THRESHOLD + 1, 1, &clock, scenario.ctx(),
+        RISK_THRESHOLD + 1, 1, MAX_PENDING_WINDOW_MS, &clock, scenario.ctx(),
     );
     assert!(maybe_coin.is_none());
     maybe_coin.destroy_none();
 
     ts::return_shared(cap);
     destroy(op_cap);
-    clock.destroy_for_testing();
 
     scenario.next_tx(OWNER);
     assert!(scenario.has_most_recent_for_sender<PendingAction<SUI>>());
     let pending = scenario.take_from_sender<PendingAction<SUI>>();
     let mut cap = scenario.take_shared<AgentCap>();
 
-    let released = capability::approve_pending(pending, &mut cap, &mut vault, scenario.ctx());
+    let released = capability::approve_pending(pending, &mut cap, &mut vault, &clock, scenario.ctx());
     assert_eq!(released.value(), 50_000);
     destroy(released);
 
     ts::return_shared(vault);
     ts::return_shared(cap);
+    clock.destroy_for_testing();
     scenario.end();
 }
 
@@ -163,7 +167,7 @@ fun high_risk_action_reject_pending_deletes_it_without_moving_funds() {
 
     let maybe_coin = capability::execute_action<SUI>(
         &mut cap, &op_cap, &mut vault, ACTION_MOCK_SWAP, TARGET, 50_000,
-        RISK_THRESHOLD + 1, 1, &clock, scenario.ctx(),
+        RISK_THRESHOLD + 1, 1, MAX_PENDING_WINDOW_MS, &clock, scenario.ctx(),
     );
     maybe_coin.destroy_none();
     ts::return_shared(cap);
@@ -197,11 +201,10 @@ fun approve_pending_still_releases_funds_after_coin_type_limits_removed() {
 
     let maybe_coin = capability::execute_action<SUI>(
         &mut cap, &op_cap, &mut vault, ACTION_MOCK_SWAP, TARGET, 50_000,
-        RISK_THRESHOLD + 1, 1, &clock, scenario.ctx(),
+        RISK_THRESHOLD + 1, 1, MAX_PENDING_WINDOW_MS, &clock, scenario.ctx(),
     );
     maybe_coin.destroy_none();
     destroy(op_cap);
-    clock.destroy_for_testing();
     ts::return_shared(cap);
 
     scenario.next_tx(OWNER);
@@ -209,12 +212,144 @@ fun approve_pending_still_releases_funds_after_coin_type_limits_removed() {
     let mut cap = scenario.take_shared<AgentCap>();
     capability::remove_coin_limits<SUI>(&mut cap, scenario.ctx());
 
-    let released = capability::approve_pending(pending, &mut cap, &mut vault, scenario.ctx());
+    let released = capability::approve_pending(pending, &mut cap, &mut vault, &clock, scenario.ctx());
     assert_eq!(released.value(), 50_000);
     destroy(released);
 
     ts::return_shared(vault);
     ts::return_shared(cap);
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
+/* ===== Pending action expiry window ===== */
+
+#[test, expected_failure(abort_code = EPendingExpired, location = capability)]
+fun approve_pending_after_expiry_window_aborts() {
+    let mut scenario = ts::begin(OWNER);
+    setup(&mut scenario);
+
+    scenario.next_tx(OPERATOR);
+    let mut vault = scenario.take_shared<Vault>();
+    let mut cap = scenario.take_shared<AgentCap>();
+    let op_cap = scenario.take_from_sender<OperatorCap>();
+    let mut clock = clock::create_for_testing(scenario.ctx());
+
+    let maybe_coin = capability::execute_action<SUI>(
+        &mut cap, &op_cap, &mut vault, ACTION_MOCK_SWAP, TARGET, 50_000,
+        RISK_THRESHOLD + 1, 1, MAX_PENDING_WINDOW_MS, &clock, scenario.ctx(),
+    );
+    maybe_coin.destroy_none();
+    ts::return_shared(cap);
+    destroy(op_cap);
+
+    scenario.next_tx(OWNER);
+    let pending = scenario.take_from_sender<PendingAction<SUI>>();
+    let mut cap = scenario.take_shared<AgentCap>();
+    clock.increment_for_testing(MAX_PENDING_WINDOW_MS + 1);
+
+    let released = capability::approve_pending(pending, &mut cap, &mut vault, &clock, scenario.ctx());
+    destroy(released);
+
+    ts::return_shared(vault);
+    ts::return_shared(cap);
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
+/// The AgentCap's max_pending_window_ms is a ceiling the agent cannot
+/// exceed by simply asking for a larger window — confirms `execute_action`
+/// takes the min of the two rather than trusting the caller's request.
+#[test, expected_failure(abort_code = EPendingExpired, location = capability)]
+fun requested_pending_window_is_capped_by_agent_cap_max() {
+    let mut scenario = ts::begin(OWNER);
+    setup(&mut scenario); // cap's max_pending_window_ms == MAX_PENDING_WINDOW_MS
+
+    scenario.next_tx(OPERATOR);
+    let mut vault = scenario.take_shared<Vault>();
+    let mut cap = scenario.take_shared<AgentCap>();
+    let op_cap = scenario.take_from_sender<OperatorCap>();
+    let mut clock = clock::create_for_testing(scenario.ctx());
+
+    // Requested window is far larger than the cap's ceiling — if the
+    // ceiling weren't enforced, this pending action would still be valid
+    // at the timestamp we advance to below.
+    let maybe_coin = capability::execute_action<SUI>(
+        &mut cap, &op_cap, &mut vault, ACTION_MOCK_SWAP, TARGET, 50_000,
+        RISK_THRESHOLD + 1, 1, MAX_PENDING_WINDOW_MS * 100, &clock, scenario.ctx(),
+    );
+    maybe_coin.destroy_none();
+    ts::return_shared(cap);
+    destroy(op_cap);
+
+    scenario.next_tx(OWNER);
+    let pending = scenario.take_from_sender<PendingAction<SUI>>();
+    let mut cap = scenario.take_shared<AgentCap>();
+    clock.increment_for_testing(MAX_PENDING_WINDOW_MS + 1);
+
+    let released = capability::approve_pending(pending, &mut cap, &mut vault, &clock, scenario.ctx());
+    destroy(released);
+
+    ts::return_shared(vault);
+    ts::return_shared(cap);
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
+#[test, expected_failure(abort_code = ENotExpiredYet, location = capability)]
+fun reject_expired_pending_before_expiry_aborts() {
+    let mut scenario = ts::begin(OWNER);
+    setup(&mut scenario);
+
+    scenario.next_tx(OPERATOR);
+    let mut vault = scenario.take_shared<Vault>();
+    let mut cap = scenario.take_shared<AgentCap>();
+    let op_cap = scenario.take_from_sender<OperatorCap>();
+    let clock = clock::create_for_testing(scenario.ctx());
+
+    let maybe_coin = capability::execute_action<SUI>(
+        &mut cap, &op_cap, &mut vault, ACTION_MOCK_SWAP, TARGET, 50_000,
+        RISK_THRESHOLD + 1, 1, MAX_PENDING_WINDOW_MS, &clock, scenario.ctx(),
+    );
+    maybe_coin.destroy_none();
+    ts::return_shared(vault);
+    ts::return_shared(cap);
+    destroy(op_cap);
+
+    scenario.next_tx(OWNER);
+    let pending = scenario.take_from_sender<PendingAction<SUI>>();
+    capability::reject_expired_pending(pending, &clock);
+
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
+#[test]
+fun reject_expired_pending_after_expiry_succeeds() {
+    let mut scenario = ts::begin(OWNER);
+    setup(&mut scenario);
+
+    scenario.next_tx(OPERATOR);
+    let mut vault = scenario.take_shared<Vault>();
+    let mut cap = scenario.take_shared<AgentCap>();
+    let op_cap = scenario.take_from_sender<OperatorCap>();
+    let mut clock = clock::create_for_testing(scenario.ctx());
+
+    let maybe_coin = capability::execute_action<SUI>(
+        &mut cap, &op_cap, &mut vault, ACTION_MOCK_SWAP, TARGET, 50_000,
+        RISK_THRESHOLD + 1, 1, MAX_PENDING_WINDOW_MS, &clock, scenario.ctx(),
+    );
+    maybe_coin.destroy_none();
+    ts::return_shared(vault);
+    ts::return_shared(cap);
+    destroy(op_cap);
+
+    scenario.next_tx(OWNER);
+    let pending = scenario.take_from_sender<PendingAction<SUI>>();
+    clock.increment_for_testing(MAX_PENDING_WINDOW_MS + 1);
+    capability::reject_expired_pending(pending, &clock);
+
+    clock.destroy_for_testing();
     scenario.end();
 }
 
@@ -239,7 +374,7 @@ fun revoked_operator_cap_rejects_execute_action() {
     let clock = clock::create_for_testing(scenario.ctx());
 
     capability::execute_transfer<SUI>(
-        &mut cap, &op_cap, &mut vault, TARGET, 50_000, RISK_THRESHOLD, 1, &clock, scenario.ctx(),
+        &mut cap, &op_cap, &mut vault, TARGET, 50_000, RISK_THRESHOLD, 1, MAX_PENDING_WINDOW_MS, &clock, scenario.ctx(),
     );
 
     ts::return_shared(vault);
@@ -268,7 +403,7 @@ fun owner_can_rotate_operator_by_revoke_then_mint() {
     let clock = clock::create_for_testing(scenario.ctx());
 
     capability::execute_transfer<SUI>(
-        &mut cap, &new_op_cap, &mut vault, TARGET, 50_000, RISK_THRESHOLD, 1, &clock, scenario.ctx(),
+        &mut cap, &new_op_cap, &mut vault, TARGET, 50_000, RISK_THRESHOLD, 1, MAX_PENDING_WINDOW_MS, &clock, scenario.ctx(),
     );
 
     ts::return_shared(vault);
@@ -294,7 +429,7 @@ fun operator_cap_for_wrong_agent_cap_rejects_execute_action() {
     capability::create_agent_cap_for_vault(
         &vault_b, PERIOD_LENGTH_MS,
         vector[ACTION_TRANSFER], vector[TARGET], vector[],
-        RISK_THRESHOLD, EXPIRY_MS, scenario.ctx(),
+        RISK_THRESHOLD, EXPIRY_MS, MAX_PENDING_WINDOW_MS, scenario.ctx(),
     );
     capability::share_vault(vault_b);
 
@@ -313,7 +448,7 @@ fun operator_cap_for_wrong_agent_cap_rejects_execute_action() {
     let clock = clock::create_for_testing(scenario.ctx());
 
     capability::execute_transfer<SUI>(
-        &mut cap_a, &op_cap_b, &mut vault_a, TARGET, 50_000, RISK_THRESHOLD, 1, &clock, scenario.ctx(),
+        &mut cap_a, &op_cap_b, &mut vault_a, TARGET, 50_000, RISK_THRESHOLD, 1, MAX_PENDING_WINDOW_MS, &clock, scenario.ctx(),
     );
 
     ts::return_shared(vault_a);
@@ -380,7 +515,7 @@ fun execute_action_for_coin_type_without_limits_aborts() {
     let clock = clock::create_for_testing(scenario.ctx());
 
     capability::execute_transfer<MOCK_USDC>(
-        &mut cap, &op_cap, &mut vault, TARGET, 50_000, RISK_THRESHOLD, 1, &clock, scenario.ctx(),
+        &mut cap, &op_cap, &mut vault, TARGET, 50_000, RISK_THRESHOLD, 1, MAX_PENDING_WINDOW_MS, &clock, scenario.ctx(),
     );
 
     ts::return_shared(vault);
@@ -407,7 +542,7 @@ fun remove_coin_limits_then_execute_action_aborts() {
     let clock = clock::create_for_testing(scenario.ctx());
 
     capability::execute_transfer<SUI>(
-        &mut cap, &op_cap, &mut vault, TARGET, 50_000, RISK_THRESHOLD, 1, &clock, scenario.ctx(),
+        &mut cap, &op_cap, &mut vault, TARGET, 50_000, RISK_THRESHOLD, 1, MAX_PENDING_WINDOW_MS, &clock, scenario.ctx(),
     );
 
     ts::return_shared(vault);
@@ -470,7 +605,7 @@ fun mock_swap_sui_to_usdc_deposits_output_into_vault() {
     capability::create_agent_cap_for_vault(
         &vault, PERIOD_LENGTH_MS,
         vector[ACTION_MOCK_SWAP], vector[pool_address], vector[pool_address],
-        RISK_THRESHOLD, EXPIRY_MS, scenario.ctx(),
+        RISK_THRESHOLD, EXPIRY_MS, MAX_PENDING_WINDOW_MS, scenario.ctx(),
     );
     capability::share_vault(vault);
 
@@ -492,7 +627,7 @@ fun mock_swap_sui_to_usdc_deposits_output_into_vault() {
     let op_cap = scenario.take_from_sender<OperatorCap>();
 
     capability::execute_mock_swap_sui_to_usdc(
-        &mut cap, &op_cap, &mut vault, &mut pool, pool_address, 50_000, RISK_THRESHOLD, 1, &clock, scenario.ctx(),
+        &mut cap, &op_cap, &mut vault, &mut pool, pool_address, 50_000, RISK_THRESHOLD, 1, MAX_PENDING_WINDOW_MS, &clock, scenario.ctx(),
     );
 
     // 50_000 * rate(950_000) / 1e9, per mock_dex's fixed-rate formula —
@@ -527,7 +662,7 @@ fun agent_can_round_trip_sui_to_usdc_and_back() {
     capability::create_agent_cap_for_vault(
         &vault, PERIOD_LENGTH_MS,
         vector[ACTION_MOCK_SWAP], vector[pool_address], vector[pool_address],
-        RISK_THRESHOLD, EXPIRY_MS, scenario.ctx(),
+        RISK_THRESHOLD, EXPIRY_MS, MAX_PENDING_WINDOW_MS, scenario.ctx(),
     );
     capability::share_vault(vault);
 
@@ -551,7 +686,7 @@ fun agent_can_round_trip_sui_to_usdc_and_back() {
 
     // Leg 1: SUI -> MOCK_USDC.
     capability::execute_mock_swap_sui_to_usdc(
-        &mut cap, &op_cap, &mut vault, &mut pool, pool_address, 50_000, RISK_THRESHOLD, 1, &clock, scenario.ctx(),
+        &mut cap, &op_cap, &mut vault, &mut pool, pool_address, 50_000, RISK_THRESHOLD, 1, MAX_PENDING_WINDOW_MS, &clock, scenario.ctx(),
     );
     let usdc_received = capability::balance_for_testing<MOCK_USDC>(&vault);
     assert_eq!(usdc_received, 47);
@@ -559,7 +694,7 @@ fun agent_can_round_trip_sui_to_usdc_and_back() {
     // Leg 2: MOCK_USDC -> SUI — only reachable because the first leg's
     // output stayed in the vault instead of leaving to the owner.
     capability::execute_mock_swap_usdc_to_sui(
-        &mut cap, &op_cap, &mut vault, &mut pool, pool_address, usdc_received, RISK_THRESHOLD, 2, &clock, scenario.ctx(),
+        &mut cap, &op_cap, &mut vault, &mut pool, pool_address, usdc_received, RISK_THRESHOLD, 2, MAX_PENDING_WINDOW_MS, &clock, scenario.ctx(),
     );
     assert_eq!(capability::balance_for_testing<MOCK_USDC>(&vault), 0);
 
@@ -573,6 +708,7 @@ fun agent_can_round_trip_sui_to_usdc_and_back() {
 
 /* ===== Shared-treasury: vault-level aggregate limits ===== */
 
+#[allow(unused_variable)]
 /// Two independently-scoped AgentCaps drawing on one shared Vault — the
 /// core cardinality of the shared-treasury model.
 #[test]
@@ -586,7 +722,7 @@ fun two_agent_caps_can_share_one_vault() {
     let vault = capability::new_vault(PERIOD_LENGTH_MS, scenario.ctx());
     capability::create_agent_cap_for_vault(
         &vault, PERIOD_LENGTH_MS, vector[ACTION_TRANSFER], vector[TARGET], vector[],
-        RISK_THRESHOLD, EXPIRY_MS, scenario.ctx(),
+        RISK_THRESHOLD, EXPIRY_MS, MAX_PENDING_WINDOW_MS, scenario.ctx(),
     );
     capability::share_vault(vault);
 
@@ -600,7 +736,7 @@ fun two_agent_caps_can_share_one_vault() {
     let vault_ref = ts::take_shared_by_id<Vault>(&scenario, vault_id);
     capability::create_agent_cap_for_vault(
         &vault_ref, PERIOD_LENGTH_MS, vector[ACTION_TRANSFER], vector[TARGET], vector[],
-        RISK_THRESHOLD, EXPIRY_MS, scenario.ctx(),
+        RISK_THRESHOLD, EXPIRY_MS, MAX_PENDING_WINDOW_MS, scenario.ctx(),
     );
     ts::return_shared(vault_ref);
 
@@ -633,7 +769,7 @@ fun vault_level_limit_caps_combined_spend_across_agents() {
     let vault = capability::new_vault(PERIOD_LENGTH_MS, scenario.ctx());
     capability::create_agent_cap_for_vault(
         &vault, PERIOD_LENGTH_MS, vector[ACTION_TRANSFER], vector[TARGET], vector[],
-        RISK_THRESHOLD, EXPIRY_MS, scenario.ctx(),
+        RISK_THRESHOLD, EXPIRY_MS, MAX_PENDING_WINDOW_MS, scenario.ctx(),
     );
     capability::share_vault(vault);
 
@@ -649,7 +785,7 @@ fun vault_level_limit_caps_combined_spend_across_agents() {
     capability::add_vault_coin_limits<SUI>(&mut vault, TX_LIMIT, 150_000, &clock, scenario.ctx());
     capability::create_agent_cap_for_vault(
         &vault, PERIOD_LENGTH_MS, vector[ACTION_TRANSFER], vector[TARGET], vector[],
-        RISK_THRESHOLD, EXPIRY_MS, scenario.ctx(),
+        RISK_THRESHOLD, EXPIRY_MS, MAX_PENDING_WINDOW_MS, scenario.ctx(),
     );
     ts::return_shared(vault);
 
@@ -676,7 +812,7 @@ fun vault_level_limit_caps_combined_spend_across_agents() {
     let mut cap_a = ts::take_shared_by_id<AgentCap>(&scenario, cap_a_id);
     let op_cap_a = scenario.take_from_sender<OperatorCap>();
     capability::execute_transfer<SUI>(
-        &mut cap_a, &op_cap_a, &mut vault, TARGET, TX_LIMIT, RISK_THRESHOLD, 1, &clock, scenario.ctx(),
+        &mut cap_a, &op_cap_a, &mut vault, TARGET, TX_LIMIT, RISK_THRESHOLD, 1, MAX_PENDING_WINDOW_MS, &clock, scenario.ctx(),
     );
     ts::return_shared(cap_a);
     destroy(op_cap_a);
@@ -689,7 +825,7 @@ fun vault_level_limit_caps_combined_spend_across_agents() {
     // leaving only 50_000; this second TX_LIMIT-sized transfer pushes the
     // combined total to 200_000, over the vault's period limit.
     capability::execute_transfer<SUI>(
-        &mut cap_b, &op_cap_b, &mut vault, TARGET, TX_LIMIT, RISK_THRESHOLD, 1, &clock, scenario.ctx(),
+        &mut cap_b, &op_cap_b, &mut vault, TARGET, TX_LIMIT, RISK_THRESHOLD, 1, MAX_PENDING_WINDOW_MS, &clock, scenario.ctx(),
     );
 
     ts::return_shared(vault);
@@ -714,7 +850,7 @@ fun vault_without_configured_limits_has_no_aggregate_cap() {
     let clock = clock::create_for_testing(scenario.ctx());
 
     capability::execute_transfer<SUI>(
-        &mut cap, &op_cap, &mut vault, TARGET, TX_LIMIT, RISK_THRESHOLD, 1, &clock, scenario.ctx(),
+        &mut cap, &op_cap, &mut vault, TARGET, TX_LIMIT, RISK_THRESHOLD, 1, MAX_PENDING_WINDOW_MS, &clock, scenario.ctx(),
     );
 
     ts::return_shared(vault);
@@ -753,11 +889,11 @@ fun replayed_exact_same_nonce_aborts_on_resubmission() {
     let clock = clock::create_for_testing(scenario.ctx());
 
     capability::execute_transfer<SUI>(
-        &mut cap, &op_cap, &mut vault, TARGET, 10_000, RISK_THRESHOLD, 1, &clock, scenario.ctx(),
+        &mut cap, &op_cap, &mut vault, TARGET, 10_000, RISK_THRESHOLD, 1, MAX_PENDING_WINDOW_MS, &clock, scenario.ctx(),
     );
     // Same nonce again — must abort, regardless of amount/target.
     capability::execute_transfer<SUI>(
-        &mut cap, &op_cap, &mut vault, TARGET, 10_000, RISK_THRESHOLD, 1, &clock, scenario.ctx(),
+        &mut cap, &op_cap, &mut vault, TARGET, 10_000, RISK_THRESHOLD, 1, MAX_PENDING_WINDOW_MS, &clock, scenario.ctx(),
     );
 
     ts::return_shared(vault);
@@ -779,11 +915,11 @@ fun nonce_not_greater_than_last_used_aborts() {
     let clock = clock::create_for_testing(scenario.ctx());
 
     capability::execute_transfer<SUI>(
-        &mut cap, &op_cap, &mut vault, TARGET, 10_000, RISK_THRESHOLD, 5, &clock, scenario.ctx(),
+        &mut cap, &op_cap, &mut vault, TARGET, 10_000, RISK_THRESHOLD, 5, MAX_PENDING_WINDOW_MS, &clock, scenario.ctx(),
     );
     // Lower than the last-used nonce (5), not just a repeat of it.
     capability::execute_transfer<SUI>(
-        &mut cap, &op_cap, &mut vault, TARGET, 10_000, RISK_THRESHOLD, 3, &clock, scenario.ctx(),
+        &mut cap, &op_cap, &mut vault, TARGET, 10_000, RISK_THRESHOLD, 3, MAX_PENDING_WINDOW_MS, &clock, scenario.ctx(),
     );
 
     ts::return_shared(vault);
@@ -807,10 +943,10 @@ fun nonces_may_skip_values_as_long_as_increasing() {
     let clock = clock::create_for_testing(scenario.ctx());
 
     capability::execute_transfer<SUI>(
-        &mut cap, &op_cap, &mut vault, TARGET, 10_000, RISK_THRESHOLD, 1, &clock, scenario.ctx(),
+        &mut cap, &op_cap, &mut vault, TARGET, 10_000, RISK_THRESHOLD, 1, MAX_PENDING_WINDOW_MS, &clock, scenario.ctx(),
     );
     capability::execute_transfer<SUI>(
-        &mut cap, &op_cap, &mut vault, TARGET, 10_000, RISK_THRESHOLD, 100, &clock, scenario.ctx(),
+        &mut cap, &op_cap, &mut vault, TARGET, 10_000, RISK_THRESHOLD, 100, MAX_PENDING_WINDOW_MS, &clock, scenario.ctx(),
     );
 
     ts::return_shared(vault);
@@ -834,7 +970,7 @@ fun disallowed_target_aborts() {
     let clock = clock::create_for_testing(scenario.ctx());
 
     capability::execute_transfer<SUI>(
-        &mut cap, &op_cap, &mut vault, @0xBAD, 50_000, RISK_THRESHOLD, 1, &clock, scenario.ctx(),
+        &mut cap, &op_cap, &mut vault, @0xBAD, 50_000, RISK_THRESHOLD, 1, MAX_PENDING_WINDOW_MS, &clock, scenario.ctx(),
     );
 
     ts::return_shared(vault);
@@ -856,7 +992,7 @@ fun over_per_tx_limit_aborts() {
     let clock = clock::create_for_testing(scenario.ctx());
 
     capability::execute_transfer<SUI>(
-        &mut cap, &op_cap, &mut vault, TARGET, TX_LIMIT + 1, RISK_THRESHOLD, 1, &clock, scenario.ctx(),
+        &mut cap, &op_cap, &mut vault, TARGET, TX_LIMIT + 1, RISK_THRESHOLD, 1, MAX_PENDING_WINDOW_MS, &clock, scenario.ctx(),
     );
 
     ts::return_shared(vault);
@@ -880,12 +1016,12 @@ fun over_period_limit_aborts_within_same_period() {
     let mut i: u64 = 0;
     while (i < 3) {
         capability::execute_transfer<SUI>(
-            &mut cap, &op_cap, &mut vault, TARGET, TX_LIMIT, RISK_THRESHOLD, i + 1, &clock, scenario.ctx(),
+            &mut cap, &op_cap, &mut vault, TARGET, TX_LIMIT, RISK_THRESHOLD, i + 1, MAX_PENDING_WINDOW_MS, &clock, scenario.ctx(),
         );
         i = i + 1;
     };
     capability::execute_transfer<SUI>(
-        &mut cap, &op_cap, &mut vault, TARGET, TX_LIMIT, RISK_THRESHOLD, 4, &clock, scenario.ctx(),
+        &mut cap, &op_cap, &mut vault, TARGET, TX_LIMIT, RISK_THRESHOLD, 4, MAX_PENDING_WINDOW_MS, &clock, scenario.ctx(),
     );
 
     ts::return_shared(vault);
@@ -909,14 +1045,14 @@ fun period_rolls_over_after_period_length_elapses() {
     let mut i: u64 = 0;
     while (i < 3) {
         capability::execute_transfer<SUI>(
-            &mut cap, &op_cap, &mut vault, TARGET, TX_LIMIT, RISK_THRESHOLD, i + 1, &clock, scenario.ctx(),
+            &mut cap, &op_cap, &mut vault, TARGET, TX_LIMIT, RISK_THRESHOLD, i + 1, MAX_PENDING_WINDOW_MS, &clock, scenario.ctx(),
         );
         i = i + 1;
     };
 
     clock.increment_for_testing(PERIOD_LENGTH_MS + 1);
     capability::execute_transfer<SUI>(
-        &mut cap, &op_cap, &mut vault, TARGET, TX_LIMIT, RISK_THRESHOLD, 4, &clock, scenario.ctx(),
+        &mut cap, &op_cap, &mut vault, TARGET, TX_LIMIT, RISK_THRESHOLD, 4, MAX_PENDING_WINDOW_MS, &clock, scenario.ctx(),
     );
 
     ts::return_shared(vault);
@@ -943,7 +1079,7 @@ fun deactivated_cap_rejects_execute_action() {
     let clock = clock::create_for_testing(scenario.ctx());
 
     capability::execute_transfer<SUI>(
-        &mut cap, &op_cap, &mut vault, TARGET, 50_000, RISK_THRESHOLD, 1, &clock, scenario.ctx(),
+        &mut cap, &op_cap, &mut vault, TARGET, 50_000, RISK_THRESHOLD, 1, MAX_PENDING_WINDOW_MS, &clock, scenario.ctx(),
     );
 
     ts::return_shared(vault);
@@ -1002,7 +1138,7 @@ fun remove_protocol_required_target_aborts_even_for_owner() {
     capability::create_agent_cap_for_vault(
         &vault, PERIOD_LENGTH_MS,
         vector[ACTION_MOCK_SWAP], vector[pool_address], vector[pool_address],
-        RISK_THRESHOLD, EXPIRY_MS, scenario.ctx(),
+        RISK_THRESHOLD, EXPIRY_MS, MAX_PENDING_WINDOW_MS, scenario.ctx(),
     );
     capability::share_vault(vault);
     clock.destroy_for_testing();
@@ -1051,7 +1187,7 @@ fun updated_spending_limit_is_enforced_on_next_execution() {
     let clock = clock::create_for_testing(scenario.ctx());
 
     capability::execute_transfer<SUI>(
-        &mut cap, &op_cap, &mut vault, TARGET, 50_000, RISK_THRESHOLD, 1, &clock, scenario.ctx(),
+        &mut cap, &op_cap, &mut vault, TARGET, 50_000, RISK_THRESHOLD, 1, MAX_PENDING_WINDOW_MS, &clock, scenario.ctx(),
     );
 
     ts::return_shared(vault);
@@ -1075,7 +1211,7 @@ fun execute_stake_delivers_staked_sui_to_owner() {
     capability::create_agent_cap_for_vault(
         &vault, PERIOD_LENGTH_MS,
         vector[ACTION_STAKE], vector[VALIDATOR], vector[VALIDATOR],
-        RISK_THRESHOLD, EXPIRY_MS, scenario.ctx(),
+        RISK_THRESHOLD, EXPIRY_MS, MAX_PENDING_WINDOW_MS, scenario.ctx(),
     );
     capability::share_vault(vault);
 
@@ -1102,7 +1238,7 @@ fun execute_stake_delivers_staked_sui_to_owner() {
     let mut system_state = scenario.take_shared<SuiSystemState>();
 
     capability::execute_stake(
-        &mut cap, &op_cap, &mut vault, &mut system_state, VALIDATOR, STAKE_AMOUNT, RISK_THRESHOLD, 1, &clock, scenario.ctx(),
+        &mut cap, &op_cap, &mut vault, &mut system_state, VALIDATOR, STAKE_AMOUNT, RISK_THRESHOLD, 1, MAX_PENDING_WINDOW_MS, &clock, scenario.ctx(),
     );
 
     ts::return_shared(vault);

@@ -2,7 +2,7 @@ module oronyx::capability;
 
 use oronyx::operator_cap::{Self, OperatorCap};
 use std::type_name::{Self, TypeName};
-use sui::balance::{Balance};
+use sui::balance::{Self, Balance};
 use sui::coin::{Self, Coin};
 use sui::sui::SUI;
 use sui::clock::Clock;
@@ -11,6 +11,8 @@ use sui::vec_map::{Self, VecMap};
 use sui::event;
 use sui::bag::{Self, Bag};
 use sui_system::sui_system::{Self, SuiSystemState};
+use cetus_clmm::config::GlobalConfig;
+use cetus_clmm::pool::Pool;
 use oronyx::mock_dex::{Self, MockPool};
 use oronyx::mock_usdc::MOCK_USDC;
 
@@ -33,6 +35,8 @@ const EStaleGeneration: u64 = 14;
 const EOverVaultTxLimit: u64 = 15;
 const EOverVaultPeriodLimit: u64 = 16;
 const EStaleNonce: u64 = 17;
+const EPendingExpired: u64 = 18;
+const ENotExpiredYet: u64 = 19;
 
 /* Action type codes */
 const ACTION_TRANSFER: u8 = 0;
@@ -78,6 +82,7 @@ public struct AgentCap has key {
     expiry_ms: u64,
     active: bool,
     last_nonce: u64,
+    max_pending_window_ms: u64,
 }
 
 
@@ -93,6 +98,7 @@ public struct PendingAction<phantom T> has key {
     amount: u64,
     risk_score: u8,
     created_at_ms: u64,
+    expiry_ms: u64,
 }
 
 /* Events */
@@ -144,13 +150,6 @@ public struct PendingRejected has copy, drop {
 
 public struct CapDeactivated has copy, drop {
     cap_id: ID,
-}
-
-public struct ProceedsReturned has copy, drop {
-    cap_id: ID,
-    vault_id: ID,
-    coin_type: TypeName,
-    amount: u64,
 }
 
 /* Vault Functions */
@@ -270,6 +269,7 @@ public fun create_agent_cap_for_vault(
     protocol_targets: vector<address>,
     risk_threshold: u8,
     expiry_ms: u64,
+    max_pending_window_ms: u64,
     ctx: &mut TxContext,
 ) {
     assert!(vault.owner == ctx.sender(), ENotOwner);
@@ -301,6 +301,7 @@ public fun create_agent_cap_for_vault(
         expiry_ms,
         active: true,
         last_nonce: 0,
+        max_pending_window_ms,
     };
 
     event::emit(CapCreated {
@@ -477,6 +478,7 @@ public fun execute_action<T>(
     amount: u64,
     risk_score: u8,
     nonce: u64,
+    requested_pending_window_ms: u64,
     clock: &Clock,
     ctx: &mut TxContext,
 ): Option<Coin<T>> {
@@ -503,6 +505,7 @@ public fun execute_action<T>(
     let vault_id = cap.vault_id;
     let risk_threshold = cap.risk_threshold;
     let period_length_ms = cap.period_length_ms;
+    let max_pending_window_ms = cap.max_pending_window_ms;
 
     let limits = cap.limits.get_mut(&coin_key);
     assert!(amount <= limits.spending_limit_per_tx, EOverTxLimit);
@@ -519,6 +522,7 @@ public fun execute_action<T>(
     };
 
     if (risk_score > risk_threshold) {
+        let window = if(requested_pending_window_ms < max_pending_window_ms) { requested_pending_window_ms } else { max_pending_window_ms };
         let pending = PendingAction<T> {
             id: object::new(ctx),
             cap_id,
@@ -528,6 +532,7 @@ public fun execute_action<T>(
             amount,
             risk_score,
             created_at_ms: now_ms,
+            expiry_ms: now_ms + window,
         };
         event::emit(ActionFlagged {
             cap_id,
@@ -552,64 +557,21 @@ public fun execute_action<T>(
     }
 }
 
-#[allow(lint(self_transfer))]
-/// Entry function for Cetus swap, this action type has an external SDK that
-/// require a two-step hand-off. Cetus' swap builder always constructs its own tx
-/// and selects input coins from the signer's on-chain balance, with no way to
-/// accept a specific coin object or an existing transaction to append to.
-///
-/// Releases the approved coin to `ctx.sender()` (the operator), so the executor's
-/// second transaction (an ordinary Cetus swap) can pick it up from the operator's
-/// own balance. Not atomic, if the second transaction fails, funds remain with the
-/// the operator rather than returning to the vault.
-public fun execute_cetus_swap_and_transfer_to_operator<T>(
-    cap: &mut AgentCap,
-    op_cap: &OperatorCap,
-    vault: &mut Vault,
-    cetus_pool_address: address,
-    amount: u64, // MIST
-    risk_score: u8,
-    nonce: u64,
-    clock: &Clock,
-    ctx: &mut TxContext,
-) {
-    let maybe_coin = execute_action<T>(cap, op_cap, vault, ACTION_CETUS_SWAP, cetus_pool_address, amount, risk_score, nonce, clock, ctx);
-    if(maybe_coin.is_some()) {
-        transfer::public_transfer(maybe_coin.destroy_some(), ctx.sender());
-    } else {
-        maybe_coin.destroy_none();
-    }
-}
 
-public fun return_proceeds<T>(
-    cap: &AgentCap,
-    op_cap: &OperatorCap,
-    vault: &mut Vault,
-    payment: Coin<T>,
-) {
-    assert_valid_operator(op_cap, cap);
-    assert!(cap.vault_id == object::id(vault), EWrongVault);
 
-    let amount = payment.value();
-    let coin_type = type_name::with_defining_ids<T>();
-    put_into_vault(vault,payment);
+/* Action types */
 
-    event::emit(ProceedsReturned {
-        cap_id: object::id(cap),
-        vault_id: object::id(vault),
-        coin_type,
-        amount,
-    });
-}
-
-/* Atomic action types */
-// Funds never leave vault custody boundary until they land
-// at their real destination, all within one PTB. Each has its
-// own entry function because Move does not support optional args,
-// so each action type's extra required objects (a MockPool,
-// a SuiSystemState, etc.) need their iwn dedicated signature. Only
-// actions whose external SDK forces a two-step hand-off (such as Cetus)
-// use execute_action_and_tranfer_to_operator instead.
+// Atomic-first design. Funds never leave vault custody boundary
+// until they land at their real destination, all within one PTB.
+// Each has its own entry function because Move does not support
+// optional args,so each action type's extra required objects
+// (a MockPool, a SuiSystemState, etc.) need their own dedicated signature.
+//
+// execute_* wraps execute_action that checks against AgentCap policies
+// finish_* performs the actual atomic action, merging normal and pending path under same logic
+//
+// Normal path: execute_* -> finish_*
+// Pending path: execute_* -> approve_and_finish_* -> finish_*
 
 public fun execute_transfer<T>(
     cap: &mut AgentCap,
@@ -619,15 +581,29 @@ public fun execute_transfer<T>(
     amount: u64, // MIST
     risk_score: u8,
     nonce: u64,
+    requested_pending_window_ms: u64,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
-    let maybe_coin = execute_action<T>(cap, op_cap, vault, ACTION_TRANSFER, recipient, amount, risk_score, nonce, clock, ctx);
+    let maybe_coin = execute_action<T>(cap, op_cap, vault, ACTION_TRANSFER, recipient, amount, risk_score, nonce, requested_pending_window_ms, clock, ctx);
     if (maybe_coin.is_some()) {
         transfer::public_transfer(maybe_coin.destroy_some(), recipient);
     } else {
         maybe_coin.destroy_none();
     }
+}
+
+public fun approve_pending_and_send<T>(
+    pending: PendingAction<T>, cap: &mut AgentCap, vault: &mut Vault, clock: &Clock, ctx: &mut TxContext,
+) {
+    let target = pending.target;
+    let coin = approve_pending(pending, cap, vault, clock, ctx);
+    transfer::public_transfer(coin, target);
+}
+
+fun finish_stake(coin: Coin<SUI>, system_state: &mut SuiSystemState, validator: address, owner: address, ctx: &mut TxContext) {
+    let staked = sui_system::request_add_stake_non_entry(system_state, coin, validator, ctx);
+    transfer::public_transfer(staked, owner);
 }
 
 /// `validator` is both the policy's target (must be in allowed_targets)
@@ -646,21 +622,35 @@ public fun execute_stake(
     amount: u64, // MIST
     risk_score: u8,
     nonce: u64,
+    requested_pending_window_ms: u64,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
-    let maybe_coin = execute_action<SUI>(cap, op_cap, vault, ACTION_STAKE, validator, amount, risk_score, nonce, clock, ctx);
+    let maybe_coin = execute_action<SUI>(cap, op_cap, vault, ACTION_STAKE, validator, amount, risk_score, nonce, requested_pending_window_ms, clock, ctx);
     if (maybe_coin.is_some()) {
-        let staked = sui_system::request_add_stake_non_entry(
-            system_state,
-            maybe_coin.destroy_some(),
-            validator,
-            ctx
-        );
-        transfer::public_transfer(staked, cap.owner);
+        finish_stake(maybe_coin.destroy_some(), system_state, validator, cap.owner, ctx);
     } else {
         maybe_coin.destroy_none();
     }
+}
+
+public fun approve_and_finish_stake(
+    pending: PendingAction<SUI>, cap: &mut AgentCap, vault: &mut Vault, system_state: &mut SuiSystemState, clock: &Clock, ctx: &mut TxContext,
+) {
+    let validator = pending.target;
+    let owner = cap.owner;
+    let coin = approve_pending(pending, cap, vault, clock, ctx);
+    finish_stake(coin, system_state, validator, owner, ctx);
+}
+
+fun finish_mock_swap_sui_to_usdc(coin: Coin<SUI>, vault: &mut Vault, pool: &mut MockPool, ctx: &mut TxContext) {
+    let out: Coin<MOCK_USDC> = mock_dex::swap_sui_for_mock_usdc(pool, coin, ctx);
+    put_into_vault(vault, out);
+}
+
+fun finish_mock_swap_usdc_to_sui(coin: Coin<MOCK_USDC>, vault: &mut Vault, pool: &mut MockPool, ctx: &mut TxContext) {
+    let out: Coin<SUI> = mock_dex::swap_mock_usdc_for_sui(pool, coin, ctx);
+    put_into_vault(vault, out);
 }
 
 /// `pool_address` is both the policy's target (must be in allowed targets list)
@@ -675,13 +665,13 @@ public fun execute_mock_swap_sui_to_usdc(
     amount: u64, // MIST
     risk_score: u8,
     nonce: u64,
+    requested_pending_window_ms: u64,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
-    let maybe_coin = execute_action<SUI>(cap, op_cap, vault, ACTION_MOCK_SWAP, pool_address, amount, risk_score, nonce, clock, ctx);
+    let maybe_coin = execute_action<SUI>(cap, op_cap, vault, ACTION_MOCK_SWAP, pool_address, amount, risk_score, nonce, requested_pending_window_ms, clock, ctx);
     if (maybe_coin.is_some()) {
-        let out: Coin<MOCK_USDC> = mock_dex::swap_sui_for_mock_usdc(pool, maybe_coin.destroy_some(), ctx);
-        put_into_vault(vault, out);
+        finish_mock_swap_sui_to_usdc(maybe_coin.destroy_some(), vault, pool, ctx);
     } else {
         maybe_coin.destroy_none();
     }
@@ -696,16 +686,150 @@ public fun execute_mock_swap_usdc_to_sui(
     amount: u64, // MOCK_USDC smallest unit
     risk_score: u8,
     nonce: u64,
+    requested_pending_window_ms: u64,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
-    let maybe_coin = execute_action<MOCK_USDC>(cap, op_cap, vault, ACTION_MOCK_SWAP, pool_address, amount, risk_score, nonce, clock, ctx);
+    let maybe_coin = execute_action<MOCK_USDC>(cap, op_cap, vault, ACTION_MOCK_SWAP, pool_address, amount, risk_score, nonce, requested_pending_window_ms, clock, ctx);
     if (maybe_coin.is_some()) {
-        let out: Coin<SUI> = mock_dex::swap_mock_usdc_for_sui(pool, maybe_coin.destroy_some(), ctx);
-        put_into_vault(vault, out);
+        finish_mock_swap_usdc_to_sui(maybe_coin.destroy_some(), vault, pool, ctx);
     } else {
         maybe_coin.destroy_none();
     }
+}
+
+public fun approve_and_finish_mock_swap_sui_to_usdc(
+    pending: PendingAction<SUI>, cap: &mut AgentCap, vault: &mut Vault, pool: &mut MockPool, clock: &Clock, ctx: &mut TxContext,
+) {
+    let coin = approve_pending(pending, cap, vault, clock, ctx);
+    finish_mock_swap_sui_to_usdc(coin, vault, pool, ctx);
+}
+
+public fun approve_and_finish_mock_swap_usdc_to_sui(
+    pending: PendingAction<MOCK_USDC>, cap: &mut AgentCap, vault: &mut Vault, pool: &mut MockPool, clock: &Clock, ctx: &mut TxContext,
+) {
+    let coin = approve_pending(pending, cap, vault, clock, ctx);
+    finish_mock_swap_usdc_to_sui(coin, vault, pool, ctx);
+}
+
+const MAX_SQRT_PRICE: u128 = 79226673515401279992447579055; // TickMath.tickIndexToSqrtPriceX64(443636)
+const MIN_SQRT_PRICE: u128 = 4295048016; // TickMath.tickIndexToSqrtPriceX64(-443636)
+
+/// Selling coin B for coin A (a2b = false, price moves up).
+fun finish_cetus_swap_b_to_a<CoinTypeA, CoinTypeB>(
+    coin_in: Coin<CoinTypeB>,
+    vault: &mut Vault,
+    cetus_config: &GlobalConfig,
+    pool: &mut Pool<CoinTypeA, CoinTypeB>,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    let (out_a, out_b, receipt) = cetus_clmm::pool::flash_swap<CoinTypeA, CoinTypeB>(
+        cetus_config, pool, /* a2b */ false, /* by_amount_in */ true,
+        coin_in.value(), MAX_SQRT_PRICE, clock,
+    );
+    out_b.destroy_zero();
+    cetus_clmm::pool::repay_flash_swap<CoinTypeA, CoinTypeB>(
+        cetus_config, pool, balance::zero<CoinTypeA>(), coin_in.into_balance(), receipt,
+    );
+    put_into_vault(vault, coin::from_balance(out_a, ctx));
+}
+
+/// Selling coin A for coin B (a2b = true, price moves down).
+fun finish_cetus_swap_a_to_b<CoinTypeA, CoinTypeB>(
+    coin_in: Coin<CoinTypeA>,
+    vault: &mut Vault,
+    cetus_config: &GlobalConfig,
+    pool: &mut Pool<CoinTypeA, CoinTypeB>,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    let (out_a, out_b, receipt) = cetus_clmm::pool::flash_swap<CoinTypeA, CoinTypeB>(
+        cetus_config, pool, /* a2b */ true, /* by_amount_in */ true,
+        coin_in.value(), MIN_SQRT_PRICE, clock,
+    );
+    out_a.destroy_zero();
+    cetus_clmm::pool::repay_flash_swap<CoinTypeA, CoinTypeB>(
+        cetus_config, pool, coin_in.into_balance(), balance::zero<CoinTypeB>(), receipt,
+    );
+    put_into_vault(vault, coin::from_balance(out_b, ctx));
+}
+
+public fun execute_cetus_swap_b_to_a<CoinTypeA, CoinTypeB>(
+    cap: &mut AgentCap,
+    op_cap: &OperatorCap,
+    vault: &mut Vault,
+    cetus_config: &GlobalConfig,
+    pool: &mut Pool<CoinTypeA, CoinTypeB>,
+    pool_address: address,
+    amount: u64,
+    risk_score: u8,
+    nonce: u64,
+    requested_pending_window_ms: u64,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    let maybe_coin = execute_action<CoinTypeB>(
+        cap, op_cap, vault, ACTION_CETUS_SWAP, pool_address, amount,
+        risk_score, nonce, requested_pending_window_ms, clock, ctx,
+    );
+    if (maybe_coin.is_some()) {
+        finish_cetus_swap_b_to_a<CoinTypeA, CoinTypeB>(maybe_coin.destroy_some(), vault, cetus_config, pool, clock, ctx);
+    } else {
+        maybe_coin.destroy_none();
+    };
+}
+
+public fun approve_and_finish_cetus_swap_b_to_a<CoinTypeA, CoinTypeB>(
+    pending: PendingAction<CoinTypeB>,
+    cap: &mut AgentCap,
+    vault: &mut Vault,
+    cetus_config: &GlobalConfig,
+    pool: &mut Pool<CoinTypeA, CoinTypeB>,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    let coin = approve_pending(pending, cap, vault, clock, ctx);
+    finish_cetus_swap_b_to_a<CoinTypeA, CoinTypeB>(coin, vault, cetus_config, pool, clock, ctx);
+}
+
+
+public fun execute_cetus_swap_a_to_b<CoinTypeA, CoinTypeB>(
+    cap: &mut AgentCap,
+    op_cap: &OperatorCap,
+    vault: &mut Vault,
+    cetus_config: &GlobalConfig,
+    pool: &mut Pool<CoinTypeA, CoinTypeB>,
+    pool_address: address,
+    amount: u64,
+    risk_score: u8,
+    nonce: u64,
+    requested_pending_window_ms: u64,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    let maybe_coin = execute_action<CoinTypeA>(
+        cap, op_cap, vault, ACTION_CETUS_SWAP, pool_address, amount,
+        risk_score, nonce, requested_pending_window_ms, clock, ctx,
+    );
+    if (maybe_coin.is_some()) {
+        finish_cetus_swap_a_to_b<CoinTypeA, CoinTypeB>(maybe_coin.destroy_some(), vault, cetus_config, pool, clock, ctx);
+    } else {
+        maybe_coin.destroy_none();
+    };
+}
+
+public fun approve_and_finish_cetus_swap_a_to_b<CoinTypeA, CoinTypeB>(
+    pending: PendingAction<CoinTypeA>,
+    cap: &mut AgentCap,
+    vault: &mut Vault,
+    cetus_config: &GlobalConfig,
+    pool: &mut Pool<CoinTypeA, CoinTypeB>,
+    clock: &Clock,
+    ctx: &mut TxContext,
+) {
+    let coin = approve_pending(pending, cap, vault, clock, ctx);
+    finish_cetus_swap_a_to_b<CoinTypeA, CoinTypeB>(coin, vault, cetus_config, pool, clock, ctx);
 }
 
 /* Approval flow for flagged actions */
@@ -714,14 +838,16 @@ public fun approve_pending<T>(
     pending: PendingAction<T>,
     cap: &mut AgentCap,
     vault: &mut Vault,
+    clock: &Clock,
     ctx: &mut TxContext,
 ): Coin<T> {
     assert!(cap.owner == ctx.sender(), ENotOwner);
     assert!(pending.cap_id == object::id(cap), EWrongCap);
     assert!(pending.vault_id == object::id(vault), EWrongVault);
+    assert!(clock.timestamp_ms() < pending.expiry_ms, EPendingExpired);
 
     let cap_id = object::id(cap);
-    let PendingAction { id, cap_id: _, vault_id: _, action_type, target, amount, risk_score, created_at_ms: _ } = pending;
+    let PendingAction { id, cap_id: _, vault_id: _, action_type, target, amount, risk_score, created_at_ms: _, expiry_ms: _ } = pending;
 
     let coin_key = type_name::with_defining_ids<T>();
     // Owner may have removed this coin type limits since the action was
@@ -752,6 +878,13 @@ public fun reject_pending<T>(pending: PendingAction<T>, cap: &AgentCap, ctx: &Tx
     assert!(cap.owner == ctx.sender(), ENotOwner);
     assert!(pending.cap_id == object::id(cap), EWrongCap);
 
+    let PendingAction { id, cap_id, .. } = pending;
+    event::emit(PendingRejected { pending_id: object::uid_to_inner(&id), cap_id });
+    object::delete(id);
+}
+
+public fun reject_expired_pending<T>(pending: PendingAction<T>, clock: &Clock) {
+    assert!(clock.timestamp_ms() >= pending.expiry_ms, ENotExpiredYet);
     let PendingAction { id, cap_id, .. } = pending;
     event::emit(PendingRejected { pending_id: object::uid_to_inner(&id), cap_id });
     object::delete(id);
