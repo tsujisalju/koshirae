@@ -173,7 +173,7 @@ intentsRouter.post("/intents/:id/approve", async (req, res) => {
     },
   });
   if (!row) return res.status(404).json({ error: "intent_not_found" });
-  if (row.status !== "pending_approval")
+  if (row.status !== "pending_approved")
     return res.status(409).json({ error: "intent_not_pending_approval" });
   if (!row.pendingActionId)
     return res.status(400).json({ error: "pending_action_id_not_found" });
