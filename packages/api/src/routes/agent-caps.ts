@@ -123,6 +123,88 @@ agentCapsRouter.post(
   },
 );
 
+agentCapsRouter.post(
+  "/agent-caps/:agentCapId/coin-limits/:coinType",
+  async (req, res) => {
+    const parsed = CoinLimitsInput.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({
+        error: "invalid_request",
+        details: z.treeifyError(parsed.error),
+      });
+    }
+    const tx = new Transaction();
+    tx.moveCall({
+      target: `${KOSHIRAE_PACKAGE_ID}::capability::add_coin_limits`,
+      typeArguments: [req.params.coinType],
+      arguments: [
+        tx.object(req.params.agentCapId),
+        tx.pure.u64(parsed.data.spendingLimitPerTx),
+        tx.pure.u64(parsed.data.spendingLimitPeriod),
+        tx.object.clock(),
+      ],
+    });
+    const txBytes = await tx.build({ client: suiClient });
+    return res
+      .status(200)
+      .json({ unsignedTransaction: Buffer.from(txBytes).toString("base64") });
+  },
+);
+
+agentCapsRouter.patch(
+  "/agent-caps/:agentCapId/coin-limits/:coinType",
+  async (req, res) => {
+    const parsed = CoinLimitsInput.partial().safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({
+        error: "invalid_request",
+        details: z.treeifyError(parsed.error),
+      });
+    }
+    const tx = new Transaction();
+    if (parsed.data.spendingLimitPerTx !== undefined) {
+      tx.moveCall({
+        target: `${KOSHIRAE_PACKAGE_ID}::capability::update_spending_limit_per_tx`,
+        typeArguments: [req.params.coinType],
+        arguments: [
+          tx.object(req.params.agentCapId),
+          tx.pure.u64(parsed.data.spendingLimitPerTx),
+        ],
+      });
+    }
+    if (parsed.data.spendingLimitPeriod !== undefined) {
+      tx.moveCall({
+        target: `${KOSHIRAE_PACKAGE_ID}::capability::update_spending_limit_period`,
+        typeArguments: [req.params.coinType],
+        arguments: [
+          tx.object(req.params.agentCapId),
+          tx.pure.u64(parsed.data.spendingLimitPeriod),
+        ],
+      });
+    }
+    const txBytes = await tx.build({ client: suiClient });
+    return res
+      .status(200)
+      .json({ unsignedTransaction: Buffer.from(txBytes).toString("base64") });
+  },
+);
+
+agentCapsRouter.delete(
+  "/agent-caps/:agentCapId/coin-limits/:coinType",
+  async (req, res) => {
+    const tx = new Transaction();
+    tx.moveCall({
+      target: `${KOSHIRAE_PACKAGE_ID}::capability::remove_coin_limits`,
+      typeArguments: [req.params.coinType],
+      arguments: [tx.object(req.params.agentCapId)],
+    });
+    const txBytes = await tx.build({ client: suiClient });
+    return res
+      .status(200)
+      .json({ unsignedTransaction: Buffer.from(txBytes).toString("base64") });
+  },
+);
+
 agentCapsRouter.get("/agent-caps/:agentCapId", async (req, res) => {
   try {
     return res.status(200).json(await fetchAgentCap(req.params.agentCapId));

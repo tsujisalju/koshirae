@@ -5,7 +5,6 @@ import { db } from "../db/client";
 import {
   fetchAgentCap,
   fetchOperatorCap,
-  fetchOperatorCapOwner,
   findCreatedObjectId,
 } from "../chain/reads";
 import { mechanicalRiskEvaluator } from "../risk/evaluate";
@@ -16,8 +15,21 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { buildApprovalTransaction } from "../ptb/build-approval";
 import { resolveIntentCoinType } from "../intent-coin-type";
+import { SUI_TYPE_ARG } from "@mysten/sui/utils";
+import { Transaction } from "@mysten/sui/transactions";
 
 export const intentsRouter = Router();
+
+function nextStatus(currentStatus: string, succeeded: boolean): string {
+  if (!succeeded) {
+    return currentStatus === "approved" || currentStatus === "denied"
+      ? "pending_approved"
+      : "failed";
+  }
+  if (currentStatus === "ready" || currentStatus === "approved")
+    return "executed";
+  return currentStatus;
+}
 
 function rowToIntent(row: typeof intents.$inferSelect): Intent {
   return {
@@ -141,11 +153,7 @@ intentsRouter.post("/intents/:id/submitted", async (req, res) => {
     );
   }
 
-  const newStatus = succeeded
-    ? row.status === "pending_approval"
-      ? "pending_approval"
-      : "executed"
-    : "failed";
+  const newStatus = nextStatus(row.status, succeeded);
 
   await db
     .update(intents)
@@ -179,6 +187,51 @@ intentsRouter.post("/intents/:id/approve", async (req, res) => {
     vaultId: agentCap.vaultId,
   });
   const txBytes = await tx.build({ client: suiClient });
+  await db
+    .update(intents)
+    .set({ status: "approved" })
+    .where(eq(intents.id, req.params.id));
+  return res
+    .status(200)
+    .json({ unsignedTransaction: Buffer.from(txBytes).toString("base64") });
+});
+
+intentsRouter.post("/intents/:id/reject", async (req, res) => {
+  const row = await db.query.intents.findFirst({
+    where: {
+      id: req.params.id,
+    },
+  });
+  if (!row) return res.status(404).json({ error: "intent_not_found" });
+  if (row.status !== "pending_approval")
+    return res.status(409).json({ error: "intent_not_pending_approval" });
+  if (!row.pendingActionId)
+    return res.status(409).json({ error: "pending_action_not_yet_recorded" });
+
+  const intent = rowToIntent(row);
+  if (!intent.pendingActionId)
+    throw new Error("Intent has no recorded PendingAction id");
+  const coinType =
+    intent.request.actionType === "stake"
+      ? SUI_TYPE_ARG
+      : intent.request.actionType === "cetusSwap"
+        ? intent.request.coinTypeIn
+        : intent.request.coinType;
+
+  const tx = new Transaction();
+  tx.moveCall({
+    target: `${KOSHIRAE_PACKAGE_ID}::capability::reject_pending`,
+    typeArguments: [coinType],
+    arguments: [
+      tx.object(intent.pendingActionId),
+      tx.object(intent.agentCapId),
+    ],
+  });
+  const txBytes = await tx.build({ client: suiClient });
+  await db
+    .update(intents)
+    .set({ status: "denied" })
+    .where(eq(intents.id, req.params.id));
   return res
     .status(200)
     .json({ unsignedTransaction: Buffer.from(txBytes).toString("base64") });
