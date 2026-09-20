@@ -5,6 +5,7 @@ import { db } from "../db/client";
 import {
   fetchAgentCap,
   fetchOperatorCap,
+  fetchOperatorCapOwner,
   findCreatedObjectId,
 } from "../chain/reads";
 import { mechanicalRiskEvaluator } from "../risk/evaluate";
@@ -23,7 +24,7 @@ export const intentsRouter = Router();
 function nextStatus(currentStatus: string, succeeded: boolean): string {
   if (!succeeded) {
     return currentStatus === "approved" || currentStatus === "denied"
-      ? "pending_approved"
+      ? "pending_approval"
       : "failed";
   }
   if (currentStatus === "ready" || currentStatus === "approved")
@@ -93,6 +94,7 @@ intentsRouter.post("/agent-caps/:agentCapId/intents", async (req, res) => {
     riskScore,
     nonce,
   });
+  tx.setSender(await fetchOperatorCapOwner(request.operatorCapId));
   const txBytes = await tx.build({ client: suiClient });
 
   const id = randomUUID();
@@ -173,7 +175,7 @@ intentsRouter.post("/intents/:id/approve", async (req, res) => {
     },
   });
   if (!row) return res.status(404).json({ error: "intent_not_found" });
-  if (row.status !== "pending_approved")
+  if (row.status !== "pending_approval")
     return res.status(409).json({ error: "intent_not_pending_approval" });
   if (!row.pendingActionId)
     return res.status(400).json({ error: "pending_action_id_not_found" });
@@ -186,6 +188,7 @@ intentsRouter.post("/intents/:id/approve", async (req, res) => {
     agentCapId: intent.agentCapId,
     vaultId: agentCap.vaultId,
   });
+  tx.setSender(agentCap.owner);
   const txBytes = await tx.build({ client: suiClient });
   await db
     .update(intents)
@@ -218,7 +221,9 @@ intentsRouter.post("/intents/:id/reject", async (req, res) => {
         ? intent.request.coinTypeIn
         : intent.request.coinType;
 
+  const agentCap = await fetchAgentCap(intent.agentCapId);
   const tx = new Transaction();
+  tx.setSender(agentCap.owner);
   tx.moveCall({
     target: `${KOSHIRAE_PACKAGE_ID}::capability::reject_pending`,
     typeArguments: [coinType],

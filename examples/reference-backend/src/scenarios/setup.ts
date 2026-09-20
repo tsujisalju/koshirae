@@ -16,6 +16,7 @@ const DEFAULT_LIMITS = {
 
 export async function setupAgentCap(allowedTargets: string[]) {
   const { unsignedTransaction } = await createAgentCapWithVault({
+    owner: ownerKeypair.toSuiAddress(),
     vault: { periodLengthMs: 86_400_000 },
     agentCap: {
       periodLengthMs: 86_400_000,

@@ -21,6 +21,7 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const createAgentCapWithVault = (body: {
+  owner: string;
   vault: VaultInput;
   agentCap: Omit<AgentCapPolicyInput, "vaultId">;
 }) =>
