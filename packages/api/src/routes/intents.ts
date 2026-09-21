@@ -1,4 +1,4 @@
-import { Intent, SubmitIntentRequest } from "@koshirae/core";
+import { Intent, normalizeCoinType, SubmitIntentRequest } from "@koshirae/core";
 import { randomUUID } from "crypto";
 import { Router } from "express";
 import { db } from "../db/client";
@@ -16,7 +16,6 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { buildApprovalTransaction } from "../ptb/build-approval";
 import { resolveIntentCoinType } from "../intent-coin-type";
-import { SUI_TYPE_ARG } from "@mysten/sui/utils";
 import { Transaction } from "@mysten/sui/transactions";
 import { waitForAfterDigest } from "../chain/wait";
 
@@ -42,7 +41,21 @@ function rowToIntent(row: typeof intents.$inferSelect): Intent {
     riskScore: row.riskScore ?? undefined,
     txDigest: row.txDigest ?? undefined,
     createdAt: row.createdAt.getTime(),
+    pendingActionId: row.pendingActionId ?? undefined,
   };
+}
+
+function normalizeIntentRequest(
+  request: SubmitIntentRequest,
+): SubmitIntentRequest {
+  switch (request.actionType) {
+    case "stake":
+      return request;
+    case "cetusSwap":
+      return { ...request, coinTypeIn: normalizeCoinType(request.coinTypeIn) };
+    default: //transfer, mockSwap
+      return { ...request, coinType: normalizeCoinType(request.coinType) };
+  }
 }
 
 intentsRouter.post("/agent-caps/:agentCapId/intents", async (req, res) => {
@@ -56,7 +69,7 @@ intentsRouter.post("/agent-caps/:agentCapId/intents", async (req, res) => {
   }
   await waitForAfterDigest(req.query.afterDigest);
 
-  const request = parsed.data;
+  const request = normalizeIntentRequest(parsed.data);
 
   const existing = await db.query.intents.findFirst({
     where: {
@@ -215,14 +228,8 @@ intentsRouter.post("/intents/:id/reject", async (req, res) => {
     return res.status(409).json({ error: "pending_action_not_yet_recorded" });
 
   const intent = rowToIntent(row);
-  if (!intent.pendingActionId)
-    throw new Error("Intent has no recorded PendingAction id");
-  const coinType =
-    intent.request.actionType === "stake"
-      ? SUI_TYPE_ARG
-      : intent.request.actionType === "cetusSwap"
-        ? intent.request.coinTypeIn
-        : intent.request.coinType;
+  const pendingActionId = row.pendingActionId;
+  const coinType = resolveIntentCoinType(intent.request);
 
   const agentCap = await fetchAgentCap(intent.agentCapId);
   const tx = new Transaction();
@@ -231,7 +238,7 @@ intentsRouter.post("/intents/:id/reject", async (req, res) => {
     target: `${KOSHIRAE_PACKAGE_ID}::capability::reject_pending`,
     typeArguments: [coinType],
     arguments: [
-      tx.object(intent.pendingActionId),
+      tx.object(pendingActionId),
       tx.object(intent.agentCapId),
     ],
   });

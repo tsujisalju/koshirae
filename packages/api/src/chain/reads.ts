@@ -3,11 +3,11 @@ import {
   ActionType,
   AgentCap,
   CoinLimitsState,
+  normalizeCoinType,
   OperatorCap,
   Vault,
 } from "@koshirae/core";
 import { bcs } from "@mysten/sui/bcs";
-import { normalizeStructTag } from "@mysten/sui/utils";
 import { suiClient } from "./client";
 
 const ACTION_CODE_TO_TYPE = Object.fromEntries(
@@ -86,7 +86,8 @@ function parseCoinLimitMap(
 ): Record<string, CoinLimitsState> {
   const result: Record<string, CoinLimitsState> = {};
   for (const entry of map.contents) {
-    result[normalizeStructTag(`0x${entry.key.name}`)] = {
+    const coinType = normalizeCoinType(`0x${entry.key.name}`);
+    result[coinType] = {
       spendingLimitPerTx: entry.value.spendingLimitPerTx,
       spendingLimitPeriod: entry.value.spendingLimitPeriod,
       periodSpent: entry.value.periodSpent,
@@ -172,11 +173,11 @@ export async function findCreatedObjectId(
     include: { effects: true, objectTypes: true },
   });
   const tx = result.Transaction ?? result.FailedTransaction;
+  const objectTypes = tx?.objectTypes ?? {};
   const created = (tx?.effects?.changedObjects ?? []).find(
-    (c: any) =>
+    (c) =>
       c.idOperation === "Created" &&
-      typeof c.objectType === "string" &&
-      c.objectType.startsWith(typePrefix),
+      objectTypes[c.objectId]?.startsWith(typePrefix),
   );
   return created?.objectId;
 }
@@ -187,5 +188,8 @@ export async function fetchPoolCoinTypes(
   const obj = await suiClient.core.getObject({ objectId: poolId });
   const match = /Pool<(.+),\s*(.+)>$/.exec(obj.object.type ?? "");
   if (!match) throw new Error(`Could not parse pool coin types from ${poolId}`);
-  return { coinTypeA: match[1].trim(), coinTypeB: match[2].trim() };
+  return {
+    coinTypeA: normalizeCoinType(match[1].trim()),
+    coinTypeB: normalizeCoinType(match[2].trim()),
+  };
 }

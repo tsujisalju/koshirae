@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@mysten/sui": "^2.31.3",
     "zod": "^4.5.4"
   },
   "devDependencies": {
