@@ -1,7 +1,6 @@
 import { Transaction } from "@mysten/sui/transactions";
-import { SubmitIntentRequest } from "@koshirae/core";
+import { SUI_COIN_TYPE, SubmitIntentRequest } from "@koshirae/core";
 import { CETUS_GLOBAL_CONFIG_ID, KOSHIRAE_PACKAGE_ID } from "../chain/client";
-import { SUI_TYPE_ARG } from "@mysten/sui/utils";
 import { fetchPoolCoinTypes } from "../chain/reads";
 
 const SUI_SYSTEM_STATE_ID = "0x5";
@@ -47,7 +46,7 @@ export async function buildIntentTransaction({
       });
       break;
     case "mockSwap": {
-      const isSuiIn = request.coinType === SUI_TYPE_ARG;
+      const isSuiIn = request.coinType === SUI_COIN_TYPE;
       tx.moveCall({
         target: `${KOSHIRAE_PACKAGE_ID}::capability::${isSuiIn ? "execute_mock_swap_sui_to_usdc" : "execute_mock_swap_usdc_to_sui"}`,
         arguments: [

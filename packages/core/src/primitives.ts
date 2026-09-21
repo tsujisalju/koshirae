@@ -1,4 +1,12 @@
 import { z } from "zod";
+import { normalizeStructTag, SUI_TYPE_ARG } from "@mysten/sui/utils";
+
+export function normalizeCoinType(coinType: string): string {
+  return normalizeStructTag(coinType);
+}
+
+/** SUI in the same normalized form requests and chain reads carry. */
+export const SUI_COIN_TYPE = normalizeCoinType(SUI_TYPE_ARG);
 
 export const CoinAmount = z
   .string()

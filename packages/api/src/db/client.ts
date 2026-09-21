@@ -2,6 +2,7 @@ import { defineRelations } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "./schema";
+import { socketHostFromUrl } from "./socket-host";
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) {
@@ -10,7 +11,12 @@ if (!connectionString) {
 
 const relations = defineRelations(schema, () => ({}));
 
+const socketHost = socketHostFromUrl(connectionString);
+const client = socketHost
+  ? postgres(connectionString, { host: socketHost })
+  : postgres(connectionString);
+
 export const db = drizzle({
-  client: postgres(connectionString),
+  client,
   relations,
 });

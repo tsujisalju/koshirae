@@ -1,6 +1,6 @@
-module oronyx::capability;
+module koshirae::capability;
 
-use oronyx::operator_cap::{Self, OperatorCap};
+use koshirae::operator_cap::{Self, OperatorCap};
 use std::type_name::{Self, TypeName};
 use sui::balance::{Self, Balance};
 use sui::coin::{Self, Coin};
@@ -13,8 +13,8 @@ use sui::bag::{Self, Bag};
 use sui_system::sui_system::{Self, SuiSystemState};
 use cetus_clmm::config::GlobalConfig;
 use cetus_clmm::pool::Pool;
-use oronyx::mock_dex::{Self, MockPool};
-use oronyx::mock_usdc::MOCK_USDC;
+use koshirae::mock_dex::{Self, MockPool};
+use koshirae::mock_usdc::MOCK_USDC;
 
 /* Errors */
 const EInactive: u64 = 0;
@@ -550,6 +550,7 @@ public fun execute_action<T>(
             let vault_limits = vault.limits.get_mut(&coin_key);
             vault_limits.period_spent = vault_limits.period_spent + amount;
         };
+        assert!(bag::contains(&vault.balances, coin_key), ECoinTypeNotInVault);
         let bal: &mut Balance<T> = bag::borrow_mut(&mut vault.balances, coin_key);
         let out_coin = coin::take(bal, amount, ctx);
         event::emit(ActionExecuted { cap_id, action_type, target, amount, risk_score });
@@ -862,7 +863,7 @@ public fun approve_pending<T>(
         let vault_limits = vault.limits.get_mut(&coin_key);
         vault_limits.period_spent = vault_limits.period_spent + amount;
     };
-
+    assert!(bag::contains(&vault.balances, coin_key), ECoinTypeNotInVault);
     let bal: &mut Balance<T> = bag::borrow_mut(&mut vault.balances, coin_key);
     let out_coin = coin::take(bal, amount, ctx);
 

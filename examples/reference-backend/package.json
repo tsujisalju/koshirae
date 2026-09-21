@@ -1,17 +1,19 @@
 {
-  "name": "@koshirae/sdk",
+  "name": "reference-backend",
   "version": "0.0.1",
   "private": true,
   "type": "module",
-  "exports": {
-    ".": "./src/index.ts"
+  "scripts": {
+    "run": "tsx --env-file=.env src/run.ts"
   },
   "dependencies": {
+    "@koshirae/sdk": "workspace:*",
     "@koshirae/core": "workspace:*",
     "@mysten/sui": "^2.29.0"
   },
   "devDependencies": {
     "@types/node": "^26.5.0",
+    "tsx": "^4.23.13",
     "typescript": "^6.0.3"
   }
 }

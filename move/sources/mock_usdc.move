@@ -1,9 +1,9 @@
 /// One-time-witness coin definition for the mock USDC side of
-/// `oronyx::mock_dex`'s pool. Split into its own module because a
+/// `koshirae::mock_dex`'s pool. Split into its own module because a
 /// one-time-witness struct's name must match its declaring module's
 /// name uppercased — `mock_dex`'s OTW would have to be `MOCK_DEX`, not
 /// `MOCK_USDC`.
-module oronyx::mock_usdc;
+module koshirae::mock_usdc;
 
 use sui::coin::{Self, Coin, TreasuryCap};
 use sui::coin_registry;

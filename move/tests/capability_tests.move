@@ -1,10 +1,10 @@
 #[test_only]
-module oronyx::capability_tests;
+module koshirae::capability_tests;
 
-use oronyx::capability::{Self, Vault, AgentCap, PendingAction};
-use oronyx::operator_cap::OperatorCap;
-use oronyx::mock_dex::{Self, MockPool};
-use oronyx::mock_usdc::MOCK_USDC;
+use koshirae::capability::{Self, Vault, AgentCap, PendingAction};
+use koshirae::operator_cap::OperatorCap;
+use koshirae::mock_dex::{Self, MockPool};
+use koshirae::mock_usdc::MOCK_USDC;
 use sui::test_scenario as ts;
 use sui::coin::{Self, Coin};
 use sui::sui::SUI;
@@ -548,6 +548,78 @@ fun remove_coin_limits_then_execute_action_aborts() {
     ts::return_shared(vault);
     ts::return_shared(cap);
     destroy(op_cap);
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
+/// Limits configured for a coin type, but the vault never held any of it:
+/// must hit the clean ECoinTypeNotInVault, not the Bag-internal
+/// dynamic_field abort.
+#[test, expected_failure(abort_code = ECoinTypeNotInVault, location = capability)]
+fun execute_action_with_limits_but_no_deposit_aborts() {
+    let mut scenario = ts::begin(OWNER);
+    setup(&mut scenario);
+
+    scenario.next_tx(OWNER);
+    let mut cap = scenario.take_shared<AgentCap>();
+    let clock = clock::create_for_testing(scenario.ctx());
+    capability::add_coin_limits<MOCK_USDC>(&mut cap, TX_LIMIT, PERIOD_LIMIT, &clock, scenario.ctx());
+    ts::return_shared(cap);
+
+    scenario.next_tx(OPERATOR);
+    let mut vault = scenario.take_shared<Vault>();
+    let mut cap = scenario.take_shared<AgentCap>();
+    let op_cap = scenario.take_from_sender<OperatorCap>();
+
+    // Not flagged (risk == threshold), so this reaches the immediate-release branch.
+    capability::execute_transfer<MOCK_USDC>(
+        &mut cap, &op_cap, &mut vault, TARGET, 50_000, RISK_THRESHOLD, 1, MAX_PENDING_WINDOW_MS, &clock, scenario.ctx(),
+    );
+
+    ts::return_shared(vault);
+    ts::return_shared(cap);
+    destroy(op_cap);
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
+/// Same gap on the approval path: a flagged action for a coin type the vault
+/// never held must abort approve_pending with ECoinTypeNotInVault.
+#[test, expected_failure(abort_code = ECoinTypeNotInVault, location = capability)]
+fun approve_pending_with_limits_but_no_deposit_aborts() {
+    let mut scenario = ts::begin(OWNER);
+    setup(&mut scenario);
+
+    scenario.next_tx(OWNER);
+    let mut cap = scenario.take_shared<AgentCap>();
+    let clock = clock::create_for_testing(scenario.ctx());
+    capability::add_coin_limits<MOCK_USDC>(&mut cap, TX_LIMIT, PERIOD_LIMIT, &clock, scenario.ctx());
+    ts::return_shared(cap);
+
+    scenario.next_tx(OPERATOR);
+    let mut vault = scenario.take_shared<Vault>();
+    let mut cap = scenario.take_shared<AgentCap>();
+    let op_cap = scenario.take_from_sender<OperatorCap>();
+
+    let maybe_coin = capability::execute_action<MOCK_USDC>(
+        &mut cap, &op_cap, &mut vault, ACTION_TRANSFER, TARGET, 50_000,
+        RISK_THRESHOLD + 1, 1, MAX_PENDING_WINDOW_MS, &clock, scenario.ctx(),
+    );
+    assert!(maybe_coin.is_none());
+    maybe_coin.destroy_none();
+
+    ts::return_shared(cap);
+    destroy(op_cap);
+
+    scenario.next_tx(OWNER);
+    let pending = scenario.take_from_sender<PendingAction<MOCK_USDC>>();
+    let mut cap = scenario.take_shared<AgentCap>();
+
+    let released = capability::approve_pending(pending, &mut cap, &mut vault, &clock, scenario.ctx());
+    destroy(released);
+
+    ts::return_shared(vault);
+    ts::return_shared(cap);
     clock.destroy_for_testing();
     scenario.end();
 }

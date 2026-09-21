@@ -1,6 +1,8 @@
 packages:
   - "packages/*"
+  - "examples/reference-backend"
+  - "examples/pool-setup"
 allowBuilds:
   esbuild: true
 minimumReleaseAgeExclude:
-  - '@types/node@26.5.0'
+  - "@types/node@26.5.0"

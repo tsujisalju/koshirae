@@ -108,7 +108,7 @@ Despite all of that, every available pool rejected the swap with Cetus's
 own abort code 18 (zero-output swap) — the price ratios were too skewed for
 reasonable test amounts to produce a usable, nonzero output.
 
-Given that, `oronyx::mock_dex` (a fixed-rate swap pool this project fully
+Given that, `koshirae::mock_dex` (a fixed-rate swap pool this project fully
 controls) is the primary swap path for demos. The Cetus integration remains
 fully implemented and reachable via the `cetus_swap` decision type — it's a
 deliberate demo-reliability choice, not an abandoned feature, and is worth

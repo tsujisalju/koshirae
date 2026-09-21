@@ -1,10 +1,11 @@
-import { Intent, SubmitIntentRequest } from "@koshirae/core";
+import { Intent, normalizeCoinType, SubmitIntentRequest } from "@koshirae/core";
 import { randomUUID } from "crypto";
 import { Router } from "express";
 import { db } from "../db/client";
 import {
   fetchAgentCap,
   fetchOperatorCap,
+  fetchOperatorCapOwner,
   findCreatedObjectId,
 } from "../chain/reads";
 import { mechanicalRiskEvaluator } from "../risk/evaluate";
@@ -15,15 +16,15 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { buildApprovalTransaction } from "../ptb/build-approval";
 import { resolveIntentCoinType } from "../intent-coin-type";
-import { SUI_TYPE_ARG } from "@mysten/sui/utils";
 import { Transaction } from "@mysten/sui/transactions";
+import { waitForAfterDigest } from "../chain/wait";
 
 export const intentsRouter = Router();
 
 function nextStatus(currentStatus: string, succeeded: boolean): string {
   if (!succeeded) {
     return currentStatus === "approved" || currentStatus === "denied"
-      ? "pending_approved"
+      ? "pending_approval"
       : "failed";
   }
   if (currentStatus === "ready" || currentStatus === "approved")
@@ -40,7 +41,21 @@ function rowToIntent(row: typeof intents.$inferSelect): Intent {
     riskScore: row.riskScore ?? undefined,
     txDigest: row.txDigest ?? undefined,
     createdAt: row.createdAt.getTime(),
+    pendingActionId: row.pendingActionId ?? undefined,
   };
+}
+
+function normalizeIntentRequest(
+  request: SubmitIntentRequest,
+): SubmitIntentRequest {
+  switch (request.actionType) {
+    case "stake":
+      return request;
+    case "cetusSwap":
+      return { ...request, coinTypeIn: normalizeCoinType(request.coinTypeIn) };
+    default: //transfer, mockSwap
+      return { ...request, coinType: normalizeCoinType(request.coinType) };
+  }
 }
 
 intentsRouter.post("/agent-caps/:agentCapId/intents", async (req, res) => {
@@ -52,7 +67,9 @@ intentsRouter.post("/agent-caps/:agentCapId/intents", async (req, res) => {
       details: z.treeifyError(parsed.error),
     });
   }
-  const request = parsed.data;
+  await waitForAfterDigest(req.query.afterDigest);
+
+  const request = normalizeIntentRequest(parsed.data);
 
   const existing = await db.query.intents.findFirst({
     where: {
@@ -93,6 +110,7 @@ intentsRouter.post("/agent-caps/:agentCapId/intents", async (req, res) => {
     riskScore,
     nonce,
   });
+  tx.setSender(await fetchOperatorCapOwner(request.operatorCapId));
   const txBytes = await tx.build({ client: suiClient });
 
   const id = randomUUID();
@@ -140,7 +158,7 @@ intentsRouter.post("/intents/:id/submitted", async (req, res) => {
   });
   if (!row) return res.status(404).json({ error: "intent_not_found" });
 
-  const result = await suiClient.getTransaction({ digest: txDigest });
+  const result = await suiClient.waitForTransaction({ digest: txDigest });
   const transaction = result.Transaction ?? result.FailedTransaction;
   const succeeded = transaction.status.success;
 
@@ -186,6 +204,7 @@ intentsRouter.post("/intents/:id/approve", async (req, res) => {
     agentCapId: intent.agentCapId,
     vaultId: agentCap.vaultId,
   });
+  tx.setSender(agentCap.owner);
   const txBytes = await tx.build({ client: suiClient });
   await db
     .update(intents)
@@ -209,21 +228,17 @@ intentsRouter.post("/intents/:id/reject", async (req, res) => {
     return res.status(409).json({ error: "pending_action_not_yet_recorded" });
 
   const intent = rowToIntent(row);
-  if (!intent.pendingActionId)
-    throw new Error("Intent has no recorded PendingAction id");
-  const coinType =
-    intent.request.actionType === "stake"
-      ? SUI_TYPE_ARG
-      : intent.request.actionType === "cetusSwap"
-        ? intent.request.coinTypeIn
-        : intent.request.coinType;
+  const pendingActionId = row.pendingActionId;
+  const coinType = resolveIntentCoinType(intent.request);
 
+  const agentCap = await fetchAgentCap(intent.agentCapId);
   const tx = new Transaction();
+  tx.setSender(agentCap.owner);
   tx.moveCall({
     target: `${KOSHIRAE_PACKAGE_ID}::capability::reject_pending`,
     typeArguments: [coinType],
     arguments: [
-      tx.object(intent.pendingActionId),
+      tx.object(pendingActionId),
       tx.object(intent.agentCapId),
     ],
   });

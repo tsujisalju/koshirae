@@ -1,4 +1,4 @@
-module oronyx::operator_cap;
+module koshirae::operator_cap;
 
 /// Delegation object. Whoever holds a live OperatorCap may act as the
 /// operator on the AgentCap it references. Minted and revoked from

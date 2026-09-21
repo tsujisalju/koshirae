@@ -9,12 +9,14 @@ import {
 import { Router } from "express";
 import { z } from "zod";
 import { KOSHIRAE_PACKAGE_ID, suiClient } from "../chain/client";
-import { fetchAgentCap } from "../chain/reads";
+import { fetchAgentCap, fetchVault } from "../chain/reads";
+import { waitForAfterDigest } from "../chain/wait";
 
 export const agentCapsRouter = Router();
 
 const AgentCapInputWithoutVault = AgentCapPolicyInput.omit({ vaultId: true });
 const CreateAgentCapWithVaultRequest = z.object({
+  owner: SuiAddress,
   vault: VaultInput,
   agentCap: AgentCapInputWithoutVault,
 });
@@ -50,9 +52,10 @@ agentCapsRouter.post("/agent-caps", async (req, res) => {
       error: "invalid_request",
       details: z.treeifyError(parsed.error),
     });
-  const { vault, agentCap } = parsed.data;
+  const { owner, vault, agentCap } = parsed.data;
 
   const tx = new Transaction();
+  tx.setSender(owner);
   const [vaultArg] = tx.moveCall({
     target: `${KOSHIRAE_PACKAGE_ID}::capability::new_vault`,
     arguments: [tx.pure.u64(vault.periodLengthMs)],
@@ -78,7 +81,10 @@ agentCapsRouter.post("/vaults/:vaultId/agent-caps", async (req, res) => {
       details: z.treeifyError(parsed.error),
     });
 
+  await waitForAfterDigest(req.query.afterDigest);
+  const owner = (await fetchVault(req.params.vaultId)).owner;
   const tx = new Transaction();
+  tx.setSender(owner);
   addCreateAgentCapCall(tx, tx.object(req.params.vaultId), parsed.data);
   const txBytes = await tx.build({ client: suiClient });
   return res
@@ -93,8 +99,10 @@ agentCapsRouter.post("/agent-caps/:agentCapId/operators", async (req, res) => {
       error: "invalid_request",
       details: z.treeifyError(parsed.error),
     });
-
+  await waitForAfterDigest(req.query.afterDigest);
+  const owner = (await fetchAgentCap(req.params.agentCapId)).owner;
   const tx = new Transaction();
+  tx.setSender(owner);
   tx.moveCall({
     target: `${KOSHIRAE_PACKAGE_ID}::capability::mint_operator_cap`,
     arguments: [
@@ -111,7 +119,10 @@ agentCapsRouter.post("/agent-caps/:agentCapId/operators", async (req, res) => {
 agentCapsRouter.post(
   "/agent-caps/:agentCapId/operators/revoke",
   async (req, res) => {
+    await waitForAfterDigest(req.query.afterDigest);
+    const owner = (await fetchAgentCap(req.params.agentCapId)).owner;
     const tx = new Transaction();
+    tx.setSender(owner);
     tx.moveCall({
       target: `${KOSHIRAE_PACKAGE_ID}::capability::revoke_operator`,
       arguments: [tx.object(req.params.agentCapId)],
@@ -133,7 +144,11 @@ agentCapsRouter.post(
         details: z.treeifyError(parsed.error),
       });
     }
+    await waitForAfterDigest(req.query.afterDigest);
+
+    const owner = (await fetchAgentCap(req.params.agentCapId)).owner;
     const tx = new Transaction();
+    tx.setSender(owner);
     tx.moveCall({
       target: `${KOSHIRAE_PACKAGE_ID}::capability::add_coin_limits`,
       typeArguments: [req.params.coinType],
@@ -161,7 +176,11 @@ agentCapsRouter.patch(
         details: z.treeifyError(parsed.error),
       });
     }
+    await waitForAfterDigest(req.query.afterDigest);
+
+    const owner = (await fetchAgentCap(req.params.agentCapId)).owner;
     const tx = new Transaction();
+    tx.setSender(owner);
     if (parsed.data.spendingLimitPerTx !== undefined) {
       tx.moveCall({
         target: `${KOSHIRAE_PACKAGE_ID}::capability::update_spending_limit_per_tx`,
@@ -192,7 +211,11 @@ agentCapsRouter.patch(
 agentCapsRouter.delete(
   "/agent-caps/:agentCapId/coin-limits/:coinType",
   async (req, res) => {
+    await waitForAfterDigest(req.query.afterDigest);
+
+    const owner = (await fetchAgentCap(req.params.agentCapId)).owner;
     const tx = new Transaction();
+    tx.setSender(owner);
     tx.moveCall({
       target: `${KOSHIRAE_PACKAGE_ID}::capability::remove_coin_limits`,
       typeArguments: [req.params.coinType],
@@ -224,8 +247,11 @@ agentCapsRouter.post(
         error: "invalid_request",
         details: z.treeifyError(parsed.error),
       });
+    await waitForAfterDigest(req.query.afterDigest);
 
+    const owner = (await fetchVault(req.params.vaultId)).owner;
     const tx = new Transaction();
+    tx.setSender(owner);
     tx.moveCall({
       target: `${KOSHIRAE_PACKAGE_ID}::capability::add_vault_coin_limits`,
       typeArguments: [req.params.coinType],
@@ -252,8 +278,11 @@ agentCapsRouter.patch(
         error: "invalid_request",
         details: z.treeifyError(parsed.error),
       });
+    await waitForAfterDigest(req.query.afterDigest);
 
+    const owner = (await fetchVault(req.params.vaultId)).owner;
     const tx = new Transaction();
+    tx.setSender(owner);
     if (parsed.data.spendingLimitPerTx !== undefined) {
       tx.moveCall({
         target: `${KOSHIRAE_PACKAGE_ID}::capability::update_vault_spending_limit_per_tx`,
@@ -284,7 +313,11 @@ agentCapsRouter.patch(
 agentCapsRouter.delete(
   "/vaults/:vaultId/coin-limits/:coinType",
   async (req, res) => {
+    await waitForAfterDigest(req.query.afterDigest);
+
+    const owner = (await fetchVault(req.params.vaultId)).owner;
     const tx = new Transaction();
+    tx.setSender(owner);
     tx.moveCall({
       target: `${KOSHIRAE_PACKAGE_ID}::capability::remove_vault_coin_limits`,
       typeArguments: [req.params.coinType],
@@ -306,8 +339,11 @@ agentCapsRouter.patch("/vaults/:vaultId", async (req, res) => {
       error: "invalid_request",
       details: z.treeifyError(parsed.error),
     });
+  await waitForAfterDigest(req.query.afterDigest);
 
+  const owner = (await fetchVault(req.params.vaultId)).owner;
   const tx = new Transaction();
+  tx.setSender(owner);
   tx.moveCall({
     target: `${KOSHIRAE_PACKAGE_ID}::capability::update_vault_period_length_ms`,
     arguments: [

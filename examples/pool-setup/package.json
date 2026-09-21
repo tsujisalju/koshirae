@@ -1,0 +1,20 @@
+{
+  "name": "pool-setup",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "mint-mock-usdc": "tsx --env-file=../../.env src/mint-mock-usdc.ts",
+    "create-pool": "tsx --env-file=../../.env src/create-pool.ts",
+    "flash-swap-settle": "tsx --env-file=../../.env src/flash-swap-settle.ts"
+  },
+  "dependencies": {
+    "@cetusprotocol/common-sdk": "^1.4.2",
+    "@mysten/sui": "^2.29.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.5.0",
+    "tsx": "^4.23.13",
+    "typescript": "^6.0.3"
+  }
+}
