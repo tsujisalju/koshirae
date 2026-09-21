@@ -1,8 +1,8 @@
 #[test_only]
-module oronyx::mock_dex_tests;
+module koshirae::mock_dex_tests;
 
-use oronyx::mock_dex::{Self, MockPool};
-use oronyx::mock_usdc::MOCK_USDC;
+use koshirae::mock_dex::{Self, MockPool};
+use koshirae::mock_usdc::MOCK_USDC;
 use sui:: test_scenario as ts;
 use sui::coin;
 use sui::sui::SUI;

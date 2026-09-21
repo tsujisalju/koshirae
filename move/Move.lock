@@ -16,7 +16,7 @@ use_environment = "local"
 manifest_digest = "98EF265044695258DF77084171BC5CCC94248AEEC2463AF6274326433A1512BA"
 deps = { MoveStdlib = "MoveStdlib" }
 
-[pinned.local.oronyx]
+[pinned.local.koshirae]
 source = { root = true }
 use_environment = "local"
 manifest_digest = "D6F24A14508A4EC2AB08F1E7D2C4F06C76A0186CB48CBA015BD6FABE3D8B53CE"
@@ -82,7 +82,7 @@ use_environment = "testnet"
 manifest_digest = "7AFB66695545775FBFBB2D3078ADFD084244D5002392E837FDE21D9EA1C6D01C"
 deps = { MoveStdlib = "MoveStdlib_2" }
 
-[pinned.testnet.oronyx]
+[pinned.testnet.koshirae]
 source = { root = true }
 use_environment = "testnet"
 manifest_digest = "865FA659D1DD4E7F1706AC03F6C1887DEA37641B63FB8A7DE12BE0402F1EE6A4"

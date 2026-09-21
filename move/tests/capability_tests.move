@@ -1,10 +1,10 @@
 #[test_only]
-module oronyx::capability_tests;
+module koshirae::capability_tests;
 
-use oronyx::capability::{Self, Vault, AgentCap, PendingAction};
-use oronyx::operator_cap::OperatorCap;
-use oronyx::mock_dex::{Self, MockPool};
-use oronyx::mock_usdc::MOCK_USDC;
+use koshirae::capability::{Self, Vault, AgentCap, PendingAction};
+use koshirae::operator_cap::OperatorCap;
+use koshirae::mock_dex::{Self, MockPool};
+use koshirae::mock_usdc::MOCK_USDC;
 use sui::test_scenario as ts;
 use sui::coin::{Self, Coin};
 use sui::sui::SUI;

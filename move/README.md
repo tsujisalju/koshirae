@@ -85,7 +85,7 @@ per-integration exception, not a general architecture.
 | --------------------------------------------- | ----------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `execute_transfer`                            | `ACTION_TRANSFER` (0)   | `recipient`               | Plain native SUI transfer. `recipient` must be in `allowed_targets`.                                                                                                                                    |
 | `execute_stake`                               | `ACTION_STAKE` (2)      | `cap.owner`               | Calls `sui_system::request_add_stake_non_entry`, delivers the resulting `StakedSui` to the user — an ongoing position they should see and manage in their own wallet, not something the operator holds. |
-| `execute_mock_swap`                           | `ACTION_MOCK_SWAP` (1)  | `cap.owner`               | Atomic call into `oronyx::mock_dex`. `pool_address` doubles as both the policy `target` and the actual pool object passed in — caller is responsible for keeping these consistent.                      |
+| `execute_mock_swap`                           | `ACTION_MOCK_SWAP` (1)  | `cap.owner`               | Atomic call into `koshirae::mock_dex`. `pool_address` doubles as both the policy `target` and the actual pool object passed in — caller is responsible for keeping these consistent.                      |
 | `execute_cetus_swap_and_transfer_to_operator` | `ACTION_CETUS_SWAP` (3) | `ctx.sender()` (operator) | **Not atomic.** See below.                                                                                                                                                                              |
 
 ## The one two-step exception: Cetus
@@ -115,7 +115,7 @@ leaves no other option.
 As of this writing, Cetus's testnet pools were found to reject swaps with a
 zero-output error for every available SUI-paired pool at reasonable test
 amounts — see `/executor/README.md` for the verification process. The mock
-DEX (`oronyx::mock_dex`) is the primary swap path used for demos; Cetus
+DEX (`koshirae::mock_dex`) is the primary swap path used for demos; Cetus
 integration remains implemented and reachable, not removed.
 
 ## Error codes

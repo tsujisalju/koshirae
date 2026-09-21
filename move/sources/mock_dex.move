@@ -3,16 +3,16 @@
 /// testnet liquidity.
 ///
 /// Holds SUI on one side and a mock USDC-like coin (`MOCK_USDC`, defined
-/// in `oronyx::mock_usdc`) on the other, at a fixed rate set at creation
+/// in `koshirae::mock_usdc`) on the other, at a fixed rate set at creation
 /// time. Meant to be funded once by whoever deploys it (team wallet),
 /// then used read-only by the demo.
-module oronyx::mock_dex;
+module koshirae::mock_dex;
 
 use sui::balance::{Self, Balance};
 use sui::coin::{Self, Coin};
 use sui::sui::SUI;
 use sui::event;
-use oronyx::mock_usdc::MOCK_USDC;
+use koshirae::mock_usdc::MOCK_USDC;
 
 public struct MockPool has key {
     id: UID,

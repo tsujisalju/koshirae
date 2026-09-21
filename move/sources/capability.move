@@ -1,6 +1,6 @@
-module oronyx::capability;
+module koshirae::capability;
 
-use oronyx::operator_cap::{Self, OperatorCap};
+use koshirae::operator_cap::{Self, OperatorCap};
 use std::type_name::{Self, TypeName};
 use sui::balance::{Self, Balance};
 use sui::coin::{Self, Coin};
@@ -13,8 +13,8 @@ use sui::bag::{Self, Bag};
 use sui_system::sui_system::{Self, SuiSystemState};
 use cetus_clmm::config::GlobalConfig;
 use cetus_clmm::pool::Pool;
-use oronyx::mock_dex::{Self, MockPool};
-use oronyx::mock_usdc::MOCK_USDC;
+use koshirae::mock_dex::{Self, MockPool};
+use koshirae::mock_usdc::MOCK_USDC;
 
 /* Errors */
 const EInactive: u64 = 0;

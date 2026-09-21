@@ -23,7 +23,7 @@ export type Agent = {
   allowedTargets?: string[];
   protocolTargets?: string[];
 
-  // Real on-chain object IDs from oronyx::capability::create_agent_cap.
+  // Real on-chain object IDs from koshirae::capability::create_agent_cap.
   // `id` is set equal to `capId` once an agent is chain-backed, since
   // app/(require-wallet)/agents/[cap_id]/page.tsx already routes on
   // `cap_id`. Optional for the still-present mock seed agents.
@@ -93,7 +93,7 @@ export function formatRelativeTime(isoTimestamp: string): string {
   return `${deltaDays} day${deltaDays === 1 ? "" : "s"} ago`;
 }
 
-// Mirrors oronyx::capability's action-type codes (see move/sources/capability.move
+// Mirrors koshirae::capability's action-type codes (see move/sources/capability.move
 // and the ACTION_CODES map below, which only exposes SWAP/STAKE/TRANSFER in its
 // UI — CETUS_SWAP is included here since a cap can still carry it).
 export const ACTION_LABELS: Record<number, string> = {
@@ -103,7 +103,7 @@ export const ACTION_LABELS: Record<number, string> = {
   3: "CETUS_SWAP",
 };
 
-// Mirrors oronyx::capability's private action-type codes. "SWAP" maps to
+// Mirrors koshirae::capability's private action-type codes. "SWAP" maps to
 // ACTION_MOCK_SWAP (not ACTION_CETUS_SWAP), consistent with this project's
 // established default of the mock DEX over Cetus for demo reliability.
 // Only used at cap creation — there is no on-chain way to change
