@@ -53,7 +53,7 @@ export async function setupAgentCap(allowedTargets: string[]) {
   );
   const operatorCapId = await extractCreatedObjectId(
     mintDigest,
-    `${KOSHIRAE_PACKAGE_ID}::capability::OperatorCap`,
+    `${KOSHIRAE_PACKAGE_ID}::operator_cap::OperatorCap`,
   );
   if (!operatorCapId) throw new Error("Could not find created OperatorCap");
 

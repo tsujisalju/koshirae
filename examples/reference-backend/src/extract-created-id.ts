@@ -4,16 +4,18 @@ export async function extractCreatedObjectId(
   digest: string,
   typePrefix: string,
 ): Promise<string | undefined> {
-  const result = await suiClient.core.getTransaction({
+  // getTransaction can race the RPC node's own indexing right after a
+  // fresh submit; waitForTransaction polls until it's actually available.
+  const result = await suiClient.core.waitForTransaction({
     digest,
     include: { effects: true, objectTypes: true },
   });
   const tx = result.Transaction ?? result.FailedTransaction;
+  const objectTypes = tx?.objectTypes ?? {};
   const created = (tx?.effects?.changedObjects ?? []).find(
-    (c: any) =>
+    (c) =>
       c.idOperation === "Created" &&
-      typeof c.objectType === "string" &&
-      c.objectType.startsWith(typePrefix),
+      objectTypes[c.objectId]?.startsWith(typePrefix),
   );
   return created?.objectId;
 }
