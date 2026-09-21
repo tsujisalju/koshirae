@@ -1,6 +1,7 @@
 packages:
   - "packages/*"
   - "examples/reference-backend"
+  - "examples/pool-setup"
 allowBuilds:
   esbuild: true
 minimumReleaseAgeExclude:
