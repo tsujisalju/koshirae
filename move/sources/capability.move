@@ -550,6 +550,7 @@ public fun execute_action<T>(
             let vault_limits = vault.limits.get_mut(&coin_key);
             vault_limits.period_spent = vault_limits.period_spent + amount;
         };
+        assert!(bag::contains(&vault.balances, coin_key), ECoinTypeNotInVault);
         let bal: &mut Balance<T> = bag::borrow_mut(&mut vault.balances, coin_key);
         let out_coin = coin::take(bal, amount, ctx);
         event::emit(ActionExecuted { cap_id, action_type, target, amount, risk_score });
@@ -862,7 +863,7 @@ public fun approve_pending<T>(
         let vault_limits = vault.limits.get_mut(&coin_key);
         vault_limits.period_spent = vault_limits.period_spent + amount;
     };
-
+    assert!(bag::contains(&vault.balances, coin_key), ECoinTypeNotInVault);
     let bal: &mut Balance<T> = bag::borrow_mut(&mut vault.balances, coin_key);
     let out_coin = coin::take(bal, amount, ctx);
 
