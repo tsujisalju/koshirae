@@ -7,6 +7,7 @@ import {
   Vault,
 } from "@koshirae/core";
 import { bcs } from "@mysten/sui/bcs";
+import { normalizeStructTag } from "@mysten/sui/utils";
 import { suiClient } from "./client";
 
 const ACTION_CODE_TO_TYPE = Object.fromEntries(
@@ -85,7 +86,7 @@ function parseCoinLimitMap(
 ): Record<string, CoinLimitsState> {
   const result: Record<string, CoinLimitsState> = {};
   for (const entry of map.contents) {
-    result[`0x${entry.key.name}`] = {
+    result[normalizeStructTag(`0x${entry.key.name}`)] = {
       spendingLimitPerTx: entry.value.spendingLimitPerTx,
       spendingLimitPeriod: entry.value.spendingLimitPeriod,
       periodSpent: entry.value.periodSpent,
@@ -166,7 +167,7 @@ export async function findCreatedObjectId(
   digest: string,
   typePrefix: string,
 ): Promise<string | undefined> {
-  const result = await suiClient.getTransaction({
+  const result = await suiClient.waitForTransaction({
     digest,
     include: { effects: true, objectTypes: true },
   });

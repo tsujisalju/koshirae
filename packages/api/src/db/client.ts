@@ -10,7 +10,15 @@ if (!connectionString) {
 
 const relations = defineRelations(schema, () => ({}));
 
+// postgres.js doesn't decode a percent-encoded unix-socket dir in the URL
+// host (e.g. postgres://user@%2Fvar%2Frun%2Fpostgresql/db), which is the form
+// drizzle-kit accepts — decode it and pass it as the `host` option instead.
+const urlHost = decodeURIComponent(new URL(connectionString).hostname);
+const client = urlHost.startsWith("/")
+  ? postgres(connectionString, { host: urlHost })
+  : postgres(connectionString);
+
 export const db = drizzle({
-  client: postgres(connectionString),
+  client,
   relations,
 });

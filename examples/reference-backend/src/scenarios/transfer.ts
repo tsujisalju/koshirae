@@ -3,21 +3,26 @@ import { submitIntent } from "../api";
 import { operatorKeypair } from "../client";
 import { setupAgentCap } from "./setup";
 import { signSubmitAndReport } from "../sign-and-submit";
-
-const SUI_TYPE = "0x2::sui::SUI";
+import { SUI_TYPE_ARG } from "@mysten/sui/utils";
 
 export async function runTransferScenario() {
   const recipient = operatorKeypair.toSuiAddress();
-  const { agentCapId, operatorCapId } = await setupAgentCap([recipient]);
+  const { agentCapId, operatorCapId, lastDigest } = await setupAgentCap([
+    recipient,
+  ]);
 
-  const intent = await submitIntent(agentCapId, {
-    actionType: "transfer",
-    coinType: SUI_TYPE,
-    target: recipient,
-    amount: "1000000",
-    operatorCapId,
-    idempotencyKey: randomUUID(),
-  });
+  const intent = await submitIntent(
+    agentCapId,
+    {
+      actionType: "transfer",
+      coinType: SUI_TYPE_ARG,
+      target: recipient,
+      amount: "1000000",
+      operatorCapId,
+      idempotencyKey: randomUUID(),
+    },
+    lastDigest,
+  );
   console.log(`Intent ${intent.id} status: ${intent.status}`);
 
   const digest = await signSubmitAndReport(

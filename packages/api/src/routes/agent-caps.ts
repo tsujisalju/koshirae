@@ -10,6 +10,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { KOSHIRAE_PACKAGE_ID, suiClient } from "../chain/client";
 import { fetchAgentCap, fetchVault } from "../chain/reads";
+import { waitForAfterDigest } from "../chain/wait";
 
 export const agentCapsRouter = Router();
 
@@ -80,6 +81,7 @@ agentCapsRouter.post("/vaults/:vaultId/agent-caps", async (req, res) => {
       details: z.treeifyError(parsed.error),
     });
 
+  await waitForAfterDigest(req.query.afterDigest);
   const owner = (await fetchVault(req.params.vaultId)).owner;
   const tx = new Transaction();
   tx.setSender(owner);
@@ -97,7 +99,7 @@ agentCapsRouter.post("/agent-caps/:agentCapId/operators", async (req, res) => {
       error: "invalid_request",
       details: z.treeifyError(parsed.error),
     });
-
+  await waitForAfterDigest(req.query.afterDigest);
   const owner = (await fetchAgentCap(req.params.agentCapId)).owner;
   const tx = new Transaction();
   tx.setSender(owner);
@@ -117,6 +119,7 @@ agentCapsRouter.post("/agent-caps/:agentCapId/operators", async (req, res) => {
 agentCapsRouter.post(
   "/agent-caps/:agentCapId/operators/revoke",
   async (req, res) => {
+    await waitForAfterDigest(req.query.afterDigest);
     const owner = (await fetchAgentCap(req.params.agentCapId)).owner;
     const tx = new Transaction();
     tx.setSender(owner);
@@ -141,6 +144,8 @@ agentCapsRouter.post(
         details: z.treeifyError(parsed.error),
       });
     }
+    await waitForAfterDigest(req.query.afterDigest);
+
     const owner = (await fetchAgentCap(req.params.agentCapId)).owner;
     const tx = new Transaction();
     tx.setSender(owner);
@@ -171,6 +176,8 @@ agentCapsRouter.patch(
         details: z.treeifyError(parsed.error),
       });
     }
+    await waitForAfterDigest(req.query.afterDigest);
+
     const owner = (await fetchAgentCap(req.params.agentCapId)).owner;
     const tx = new Transaction();
     tx.setSender(owner);
@@ -204,6 +211,8 @@ agentCapsRouter.patch(
 agentCapsRouter.delete(
   "/agent-caps/:agentCapId/coin-limits/:coinType",
   async (req, res) => {
+    await waitForAfterDigest(req.query.afterDigest);
+
     const owner = (await fetchAgentCap(req.params.agentCapId)).owner;
     const tx = new Transaction();
     tx.setSender(owner);
@@ -238,6 +247,7 @@ agentCapsRouter.post(
         error: "invalid_request",
         details: z.treeifyError(parsed.error),
       });
+    await waitForAfterDigest(req.query.afterDigest);
 
     const owner = (await fetchVault(req.params.vaultId)).owner;
     const tx = new Transaction();
@@ -268,6 +278,8 @@ agentCapsRouter.patch(
         error: "invalid_request",
         details: z.treeifyError(parsed.error),
       });
+    await waitForAfterDigest(req.query.afterDigest);
+
     const owner = (await fetchVault(req.params.vaultId)).owner;
     const tx = new Transaction();
     tx.setSender(owner);
@@ -301,6 +313,8 @@ agentCapsRouter.patch(
 agentCapsRouter.delete(
   "/vaults/:vaultId/coin-limits/:coinType",
   async (req, res) => {
+    await waitForAfterDigest(req.query.afterDigest);
+
     const owner = (await fetchVault(req.params.vaultId)).owner;
     const tx = new Transaction();
     tx.setSender(owner);
@@ -325,6 +339,8 @@ agentCapsRouter.patch("/vaults/:vaultId", async (req, res) => {
       error: "invalid_request",
       details: z.treeifyError(parsed.error),
     });
+  await waitForAfterDigest(req.query.afterDigest);
+
   const owner = (await fetchVault(req.params.vaultId)).owner;
   const tx = new Transaction();
   tx.setSender(owner);

@@ -18,6 +18,7 @@ import { buildApprovalTransaction } from "../ptb/build-approval";
 import { resolveIntentCoinType } from "../intent-coin-type";
 import { SUI_TYPE_ARG } from "@mysten/sui/utils";
 import { Transaction } from "@mysten/sui/transactions";
+import { waitForAfterDigest } from "../chain/wait";
 
 export const intentsRouter = Router();
 
@@ -53,6 +54,8 @@ intentsRouter.post("/agent-caps/:agentCapId/intents", async (req, res) => {
       details: z.treeifyError(parsed.error),
     });
   }
+  await waitForAfterDigest(req.query.afterDigest);
+
   const request = parsed.data;
 
   const existing = await db.query.intents.findFirst({
@@ -142,7 +145,7 @@ intentsRouter.post("/intents/:id/submitted", async (req, res) => {
   });
   if (!row) return res.status(404).json({ error: "intent_not_found" });
 
-  const result = await suiClient.getTransaction({ digest: txDigest });
+  const result = await suiClient.waitForTransaction({ digest: txDigest });
   const transaction = result.Transaction ?? result.FailedTransaction;
   const succeeded = transaction.status.success;
 
