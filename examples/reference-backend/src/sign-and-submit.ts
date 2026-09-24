@@ -1,4 +1,7 @@
-import { signAndSubmit as sdkSignAndSubmit } from "@koshirae/sdk";
+import {
+  signAndSubmit as sdkSignAndSubmit,
+  TransactionFailedError,
+} from "@koshirae/sdk";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { Transaction } from "@mysten/sui/transactions";
 import { suiClient } from "./client";
@@ -9,7 +12,13 @@ export async function signSubmitAndReport(
   signer: Ed25519Keypair,
   intentId?: string,
 ): Promise<string> {
-  const digest = await sdkSignAndSubmit(base64Tx, signer, suiClient);
-  if (intentId) await reportSubmitted(intentId, digest);
-  return digest;
+  try {
+    const digest = await sdkSignAndSubmit(base64Tx, signer, suiClient);
+    if (intentId) await reportSubmitted(intentId, digest);
+    return digest;
+  } catch (err) {
+    if (err instanceof TransactionFailedError && intentId)
+      await reportSubmitted(intentId, err.digest);
+    throw err;
+  }
 }

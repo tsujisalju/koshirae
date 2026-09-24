@@ -2,6 +2,18 @@ import { Signer } from "@mysten/sui/cryptography";
 import { SuiGrpcClient } from "@mysten/sui/grpc";
 import { Transaction } from "@mysten/sui/transactions";
 
+// Carries the digest so callers can still report a failed on-chain execution
+// (e.g. POST /intents/:id/submitted) before propagating the failure.
+export class TransactionFailedError extends Error {
+  constructor(
+    readonly digest: string,
+    readonly executionMessage: string,
+  ) {
+    super(`Transaction ${digest} failed on-chain: ${executionMessage}`);
+    this.name = "TransactionFailedError";
+  }
+}
+
 export async function signAndSubmit(
   base64Tx: string,
   signer: Signer,
@@ -12,7 +24,14 @@ export async function signAndSubmit(
     transaction: tx,
     signer,
   });
-  const digest = result.Transaction?.digest ?? result.FailedTransaction?.digest;
+  if (result.FailedTransaction) {
+    const { digest, status } = result.FailedTransaction;
+    throw new TransactionFailedError(
+      digest,
+      status.error?.message ?? "unknown execution error",
+    );
+  }
+  const digest = result.Transaction?.digest;
   if (!digest) throw new Error("signAndExecuteTransaction returned no digest");
   return digest;
 }
