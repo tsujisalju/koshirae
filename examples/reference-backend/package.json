@@ -7,8 +7,9 @@
     "run": "tsx --env-file=.env src/run.ts"
   },
   "dependencies": {
-    "@koshirae/sdk": "workspace:*",
+    "@cetusprotocol/cetus-sui-clmm-sdk": "^5.4.0",
     "@koshirae/core": "workspace:*",
+    "@koshirae/sdk": "workspace:*",
     "@mysten/sui": "^2.29.0"
   },
   "devDependencies": {

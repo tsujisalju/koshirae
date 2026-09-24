@@ -14,6 +14,12 @@ import {
 } from "../client";
 import { extractCreatedObjectId } from "../extract-created-id";
 import { SUI_TYPE_ARG } from "@mysten/sui/utils";
+import { CoinLimitsInput } from "@koshirae/core";
+
+interface ExtraCoinLimit {
+  coinType: string;
+  limits: CoinLimitsInput;
+}
 
 const DEFAULT_LIMITS = {
   spendingLimitPerTx: "1000000000",
@@ -25,7 +31,10 @@ const DEPOSIT_AMOUNT = 100_000_000n; // 0.1 SUI (owner wallet is small)
 const sign = (base64Tx: string) =>
   signAndSubmit(base64Tx, ownerKeypair, suiClient);
 
-export async function setupAgentCap(allowedTargets: string[]) {
+export async function setupAgentCap(
+  allowedTargets: string[],
+  extraCoinLimits: ExtraCoinLimit[] = [],
+) {
   const createDigest = await withVersionRaceRetry(
     () =>
       createAgentCapWithVault({
@@ -71,8 +80,6 @@ export async function setupAgentCap(allowedTargets: string[]) {
   );
   if (!operatorCapId) throw new Error("Could not find created OperatorCap");
 
-  // mint_operator_cap mutates the shared AgentCap, so the next AgentCap
-  // build must wait on mintDigest (not createDigest) — that was the race.
   await withVersionRaceRetry(
     () =>
       addAgentCapCoinLimits(
@@ -88,6 +95,17 @@ export async function setupAgentCap(allowedTargets: string[]) {
       addVaultCoinLimits(vaultId, SUI_TYPE_ARG, DEFAULT_LIMITS, createDigest),
     sign,
   );
+
+  for (const { coinType, limits } of extraCoinLimits) {
+    await withVersionRaceRetry(
+      () => addAgentCapCoinLimits(agentCapId, coinType, limits, mintDigest),
+      sign,
+    );
+    await withVersionRaceRetry(
+      () => addVaultCoinLimits(vaultId, coinType, limits, createDigest),
+      sign,
+    );
+  }
 
   // The vault starts empty and execute_action draws from vault.balances, so
   // fund it (owner-signed, built locally — no API route for deposit).

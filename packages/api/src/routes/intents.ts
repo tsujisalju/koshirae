@@ -45,6 +45,18 @@ function rowToIntent(row: typeof intents.$inferSelect): Intent {
   };
 }
 
+async function buildAndSignIntentTxBytes(params: {
+  agentCapId: string;
+  vaultId: string;
+  request: SubmitIntentRequest;
+  riskScore: number;
+  nonce: number;
+}): Promise<Uint8Array> {
+  const tx = await buildIntentTransaction(params);
+  tx.setSender(await fetchOperatorCapOwner(params.request.operatorCapId));
+  return tx.build({ client: suiClient });
+}
+
 function normalizeIntentRequest(
   request: SubmitIntentRequest,
 ): SubmitIntentRequest {
@@ -77,7 +89,29 @@ intentsRouter.post("/agent-caps/:agentCapId/intents", async (req, res) => {
       idempotencyKey: request.idempotencyKey,
     },
   });
-  if (existing) return res.status(200).json(rowToIntent(existing));
+  if (existing) {
+    const intent = rowToIntent(existing);
+    // Object versions the first build referenced may be stale by now (this
+    // is also how a caller's version-race retry gets here), so a not-yet-
+    // submitted intent needs a fresh build rather than reusing old bytes —
+    // there are none stored anyway, buildIntentTransaction needs current
+    // chain state regardless.
+    if (intent.status !== "ready" && intent.status !== "pending_approval")
+      return res.status(200).json(intent);
+
+    const agentCap = await fetchAgentCap(agentCapId);
+    const txBytes = await buildAndSignIntentTxBytes({
+      agentCapId,
+      vaultId: agentCap.vaultId,
+      request: intent.request,
+      riskScore: intent.riskScore ?? 0,
+      nonce: agentCap.lastNonce + 1,
+    });
+    return res.status(200).json({
+      ...intent,
+      unsignedTransaction: Buffer.from(txBytes).toString("base64"),
+    });
+  }
 
   const [agentCap, operatorCap] = await Promise.all([
     fetchAgentCap(agentCapId),
@@ -103,15 +137,13 @@ intentsRouter.post("/agent-caps/:agentCapId/intents", async (req, res) => {
   const status =
     riskScore > agentCap.riskThreshold ? "pending_approval" : "ready";
 
-  const tx = await buildIntentTransaction({
+  const txBytes = await buildAndSignIntentTxBytes({
     agentCapId,
     vaultId: agentCap.vaultId,
     request,
     riskScore,
     nonce,
   });
-  tx.setSender(await fetchOperatorCapOwner(request.operatorCapId));
-  const txBytes = await tx.build({ client: suiClient });
 
   const id = randomUUID();
   await db.insert(intents).values({
