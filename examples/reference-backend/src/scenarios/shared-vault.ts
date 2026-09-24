@@ -6,6 +6,7 @@ import {
     suiClient,
 } from "../client";
 import {
+    ApiError,
     addAgentCapCoinLimits,
     addVaultCoinLimits,
     createAgentCapForVault,
@@ -192,10 +193,9 @@ export async function runSharedVaultScenario() {
             "UNEXPECTED: Agent B succeeded despite the shared vault ceiling",
         );
     } catch (err) {
-        const message = (err as Error).message;
-        if (message.includes("over_vault_period_limit"))
+        if (err instanceof ApiError && err.errorCode === "over_vault_period_limit")
             console.log(
-                `Expected failure, vault-level ceiling correctly blocked Agent B: ${message}`,
+                `Expected failure, vault-level ceiling correctly blocked Agent B: ${err.message}`,
             );
         else throw err;
     }

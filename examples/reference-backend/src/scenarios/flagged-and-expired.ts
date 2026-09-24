@@ -1,5 +1,10 @@
 import { SUI_TYPE_ARG } from "@mysten/sui/utils";
-import { approveIntent, reportSubmitted, submitIntent } from "../api";
+import {
+    ApiError,
+    approveIntent,
+    reportSubmitted,
+    submitIntent,
+} from "../api";
 import { operatorKeypair, ownerKeypair, suiClient } from "../client";
 import { setupAgentCap } from "./setup";
 import { randomUUID } from "crypto";
@@ -45,6 +50,11 @@ export async function runFlaggedAndExpiredScenario() {
         );
         console.error("UNEXPECTED: approval succeeded past expiry");
     } catch (err) {
+        if (
+            !(err instanceof ApiError) ||
+            err.errorCode !== "pending_action_expired"
+        )
+            throw err;
         console.log(
             `Expected failure - correctly rejected past expiry: ${(err as Error).message}`,
         );

@@ -8,15 +8,35 @@ import type {
 } from "@koshirae/core";
 import { API_BASE_URL } from "./client";
 
+export class ApiError extends Error {
+    constructor(
+        readonly status: number,
+        readonly errorCode: string | undefined,
+        message: string,
+    ) {
+        super(message);
+        this.name = "ApiError";
+    }
+}
+
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
     const res = await fetch(`${API_BASE_URL}${path}`, {
         ...init,
         headers: { "content-type": "application/json", ...init?.headers },
     });
-    if (!res.ok)
-        throw new Error(
-            `${init?.method ?? "GET"} ${path} -> ${res.status}: ${await res.text()}`,
+    if (!res.ok) {
+        const body = await res.text();
+        let errorCode: string | undefined;
+        try {
+            const parsed = JSON.parse(body);
+            if (typeof parsed?.error === "string") errorCode = parsed.error;
+        } catch {}
+        throw new ApiError(
+            res.status,
+            errorCode,
+            `${init?.method ?? "GET"} ${path} -> ${res.status}: ${body}`,
         );
+    }
     return res.json() as Promise<T>;
 }
 
