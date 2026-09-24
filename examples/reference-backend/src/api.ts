@@ -38,6 +38,16 @@ export const createAgentCapWithVault = (
         { method: "POST", body: JSON.stringify(body) },
     );
 
+export const createAgentCapForVault = (
+    vaultId: string,
+    body: Omit<AgentCapPolicyInput, "vaultId">,
+    afterDigest?: string,
+) =>
+    apiFetch<{ unsignedTransaction: string }>(
+        withAfter(`/vaults/${vaultId}/agent-caps`, afterDigest),
+        { method: "POST", body: JSON.stringify(body) },
+    );
+
 export const mintOperatorCap = (
     agentCapId: string,
     operator: string,
