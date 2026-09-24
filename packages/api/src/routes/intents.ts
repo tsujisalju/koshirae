@@ -248,16 +248,7 @@ intentsRouter.post("/intents/:id/approve", async (req, res) => {
         vaultId: agentCap.vaultId,
     });
     tx.setSender(agentCap.owner);
-    let txBytes: Uint8Array;
-    try {
-        txBytes = await tx.build({ client: suiClient });
-    } catch (err) {
-        if (
-            /MoveAbort[^]*abort code: 18\b[^]*approve_pending/.test(String(err))
-        )
-            return res.status(409).json({ error: "pending_action_expired" });
-        throw err;
-    }
+    const txBytes = await tx.build({ client: suiClient });
     await db
         .update(intents)
         .set({ status: "approved" })
