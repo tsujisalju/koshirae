@@ -29,16 +29,25 @@ export async function withVersionRaceRetry<
   throw lastError;
 }
 
-// Observed shape (ExecuteTransaction, testnet): a @protobuf-ts RpcError with
-// code "INVALID_ARGUMENT" and message
+// Observed shapes (ExecuteTransaction, testnet), both @protobuf-ts RpcErrors
+// with code "INVALID_ARGUMENT" — the outer wrapper text varies with how many
+// validators had already voted by the time our tx landed:
 //   "Transaction processing aborted (retriable with another submission).
 //    Non-retriable errors: [Transaction needs to be rebuilt because object
 //    0x.. version 0x.. is unavailable for consumption, current version: ..]"
-// The grpc-status-details-bin trailer carries only that same text (no
-// structured ErrorInfo), and INVALID_ARGUMENT is also used for genuinely
-// bad requests, so the code alone can't discriminate — match on the code
-// plus the stale-object phrases. The "Non-retriable errors" wording is
-// misleading: it just lists the per-validator cause.
+// or, once enough validators (>1/3 stake) had already locked the newer
+// version, the *same* condition gets a "non-retriable" outer label instead:
+//   "Transaction is rejected as invalid by more than 1/3 of validators by
+//    stake (non-retriable). Non-retriable errors: [Transaction needs to be
+//    rebuilt because object 0x.. version 0x.. is unavailable for
+//    consumption, current version: ..]"
+// "(non-retriable)" there means resubmitting the *same signed bytes* is
+// futile — it says nothing about whether a fresh rebuild would succeed,
+// which is exactly what withVersionRaceRetry does. So don't gate on the
+// outer wrapper text at all; key only on the inner cause, which is specific
+// enough on its own not to false-positive on unrelated INVALID_ARGUMENT
+// errors. The grpc-status-details-bin trailer carries only this same text
+// (no structured ErrorInfo to key on instead).
 function isRetriableVersionRace(err: unknown): boolean {
   for (let e = err, depth = 0; e && depth < 5; depth++) {
     if (e instanceof Error) {
@@ -46,9 +55,8 @@ function isRetriableVersionRace(err: unknown): boolean {
       const m = e.message;
       if (
         (code === undefined || code === "INVALID_ARGUMENT") &&
-        m.includes("retriable with another submission") &&
-        (m.includes("needs to be rebuilt") ||
-          m.includes("unavailable for consumption"))
+        m.includes("needs to be rebuilt") &&
+        m.includes("unavailable for consumption")
       )
         return true;
       e = (e as { cause?: unknown }).cause;
