@@ -47,11 +47,6 @@ public fun create_pool(
     transfer::share_object(pool);
 }
 
-/// Swaps SUI for MOCK_USDC at the pool's fixed rate. Intended to be called
-/// by the executor as the second step after `execute_action_and_transfer_to_operator`
-/// releases funds to the operator — mirrors how the real Cetus swap step
-/// is invoked, so swapping between mock and real integration is a small
-/// change in the executor, not a redesign.
 public fun swap_sui_for_mock_usdc(
     pool: &mut MockPool,
     payment: Coin<SUI>,
