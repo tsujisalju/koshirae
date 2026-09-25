@@ -4,7 +4,13 @@
 import { SUI_TYPE_ARG, normalizeSuiAddress } from "@mysten/sui/utils";
 import { KOSHIRAE_PACKAGE_ID, ownerKeypair, suiClient } from "../client";
 import { Transaction } from "@mysten/sui/transactions";
-import { TickMath } from "@cetusprotocol/cetus-sui-clmm-sdk";
+import {
+    TickMath,
+    d,
+    asUintN,
+    MIN_TICK_INDEX,
+    MAX_TICK_INDEX,
+} from "@cetusprotocol/common-sdk";
 import { signAndSubmit } from "@koshirae/sdk";
 import { extractCreatedObjectId } from "../extract-created-id";
 
@@ -41,19 +47,26 @@ async function main() {
             tx.pure.u64(10_000_000_000),
         ],
     });
-    const [suiForPool] = tx.splitCoins(tx.gas, [tx.pure.u64(5_000_000_000)]);
-    const coinA = suiIsA ? mockUsdc : suiForPool;
-    const coinB = suiIsA ? suiForPool : mockUsdc;
+    const [suiForPool] = tx.splitCoins(tx.gas, [tx.pure.u64(1_000_000_000)]);
+    const coinA = suiIsA ? suiForPool : mockUsdc;
+    const coinB = suiIsA ? mockUsdc : suiForPool;
 
-    const price = suiIsA ? 0.72 : 1 / 0.72;
+    // Cetus price = how much of coinB one unit of coinA is worth.
+    const price = suiIsA ? d(0.72) : d(1).div(d(0.72));
     const sqrtPrice = TickMath.priceToSqrtPriceX64(
-        price as any,
+        price,
         suiIsA ? 9 : 6,
         suiIsA ? 6 : 9,
     );
     const tickSpacing = 60;
-    const tickLower = -443636 + (443434 % tickSpacing);
-    const tickUpper = 443636 - (443434 % tickSpacing);
+    const tickLower = TickMath.getInitializeTickIndex(
+        MIN_TICK_INDEX,
+        tickSpacing,
+    );
+    const tickUpper = TickMath.getInitializeTickIndex(
+        MAX_TICK_INDEX,
+        tickSpacing,
+    );
 
     const [position, leftoverA, leftoverB] = tx.moveCall({
         target: `${CETUS_PACKAGE_ID}::pool_creator::create_pool_v3`,
@@ -64,11 +77,11 @@ async function main() {
             tx.pure.u32(tickSpacing),
             tx.pure.u128(BigInt(sqrtPrice.toString())),
             tx.pure.string(""),
-            tx.pure.u32(tickLower),
-            tx.pure.u32(tickUpper),
+            tx.pure.u32(Number(asUintN(BigInt(tickLower)))),
+            tx.pure.u32(Number(asUintN(BigInt(tickUpper)))),
             coinA,
             coinB,
-            tx.pure.bool(true),
+            tx.pure.bool(suiIsA), // SUI is the fixed side regardless of slot
             tx.object.clock(),
         ],
     });
@@ -85,8 +98,11 @@ async function main() {
     );
     const poolId = await extractCreatedObjectId(
         digest,
-        `${CETUS_PACKAGE_ID}::pool::Pool<`,
+        // Cetus types use its original package id, not CETUS_PACKAGE_ID
+        "::pool::Pool<",
     );
+    if (!poolId)
+        throw new Error(`Could not find created Pool (digest: ${digest})`);
     console.log(
         `Pool created: CETUS_POOL_ID=${poolId} (coin ordering A=${coinTypeA}, B=${coinTypeB})`,
     );

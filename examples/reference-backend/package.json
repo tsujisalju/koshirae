@@ -1,20 +1,20 @@
 {
-  "name": "reference-backend",
-  "version": "0.0.1",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "run": "tsx --env-file=.env src/run.ts"
-  },
-  "dependencies": {
-    "@cetusprotocol/cetus-sui-clmm-sdk": "^5.4.0",
-    "@koshirae/core": "workspace:*",
-    "@koshirae/sdk": "workspace:*",
-    "@mysten/sui": "^2.29.0"
-  },
-  "devDependencies": {
-    "@types/node": "^26.5.0",
-    "tsx": "^4.23.13",
-    "typescript": "^6.0.3"
-  }
+    "name": "reference-backend",
+    "version": "0.0.1",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "run": "tsx --env-file=.env src/run.ts"
+    },
+    "dependencies": {
+        "@cetusprotocol/common-sdk": "^1.4.2",
+        "@koshirae/core": "workspace:*",
+        "@koshirae/sdk": "workspace:*",
+        "@mysten/sui": "^2.29.0"
+    },
+    "devDependencies": {
+        "@types/node": "^26.5.0",
+        "tsx": "^4.23.13",
+        "typescript": "^6.0.3"
+    }
 }
