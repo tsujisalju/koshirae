@@ -96,7 +96,9 @@ public struct PendingAction<phantom T> has key {
     action_type: u8,
     target: address,
     amount: u64,
-    risk_score: u8,
+    onchain_floor: u8,
+    reported_risk: u8,
+    risk_score: u8, // effective_risk
     created_at_ms: u64,
     expiry_ms: u64,
 }
@@ -126,6 +128,8 @@ public struct ActionExecuted has copy, drop {
     action_type: u8,
     target: address,
     amount: u64,
+    onchain_floor: u8,
+    reported_risk: u8,
     risk_score: u8,
 }
 
@@ -135,6 +139,8 @@ public struct ActionFlagged has copy, drop {
     action_type: u8,
     target: address,
     amount: u64,
+    onchain_floor: u8,
+    reported_risk: u8,
     risk_score: u8,
 }
 
@@ -246,6 +252,11 @@ public fun update_vault_period_length_ms(vault: &mut Vault, period_length_ms: u6
 }
 
 #[test_only]
+public fun pending_risk_for_testing<T>(pending: &PendingAction<T>): (u8, u8, u8) {
+    (pending.onchain_floor, pending.reported_risk, pending.risk_score)
+}
+
+#[test_only]
 public fun balance_for_testing<T>(vault: &Vault): u64 {
     let key = type_name::with_defining_ids<T>();
     if (bag::contains(&vault.balances, key)) {
@@ -255,6 +266,28 @@ public fun balance_for_testing<T>(vault: &Vault): u64 {
         0
     }
 }
+
+/* Risk Evaluation */
+
+const MAX_AMOUNT_SCORE: u64 = 180;
+const NOVEL_TARGET_SCORE: u64 = 20;
+
+/// On-chain risk floor from facts the chain can verify itself. Private, so
+/// its formula and weights can change in a compatible upgrade. Off-chain
+/// models never change this, the only feed `reported_risk`, which can
+/// raise the effective score but never lower it.
+fun onchain_risk_floor(amount: u64, spending_limit_per_tx: u64, is_protocol_target: bool): u8 {
+    let amount_score = if (spending_limit_per_tx == 0) { // avoid divide by 0
+        MAX_AMOUNT_SCORE
+    } else {
+        // u128 to avoid overflow on large amounts
+        (((amount as u128) * (MAX_AMOUNT_SCORE as u128) / (spending_limit_per_tx as u128)) as u64)
+    };
+    let novelty = if (is_protocol_target) { 0 } else { NOVEL_TARGET_SCORE };
+    let total = amount_score + novelty;
+    if (total > 255) { 255 } else { (total as u8) }
+}
+
 /* AgentCap Lifecycle */
 
 /// Creates an AgentCap and attach to a vault, either a freshly created
@@ -476,7 +509,7 @@ public fun execute_action<T>(
     action_type: u8,
     target: address,
     amount: u64,
-    risk_score: u8,
+    reported_risk: u8,
     nonce: u64,
     requested_pending_window_ms: u64,
     clock: &Clock,
@@ -506,6 +539,7 @@ public fun execute_action<T>(
     let risk_threshold = cap.risk_threshold;
     let period_length_ms = cap.period_length_ms;
     let max_pending_window_ms = cap.max_pending_window_ms;
+    let is_protocol_target = cap.protocol_targets.contains(&target);
 
     let limits = cap.limits.get_mut(&coin_key);
     assert!(amount <= limits.spending_limit_per_tx, EOverTxLimit);
@@ -521,7 +555,10 @@ public fun execute_action<T>(
         assert!(vault_limits.period_spent + amount <= vault_limits.spending_limit_period, EOverVaultPeriodLimit);
     };
 
-    if (risk_score > risk_threshold) {
+    let onchain_floor = onchain_risk_floor(amount, limits.spending_limit_per_tx, is_protocol_target);
+    let effective_risk = if (reported_risk > onchain_floor) { reported_risk } else { onchain_floor };
+
+    if (effective_risk > risk_threshold) {
         let window = if(requested_pending_window_ms < max_pending_window_ms) { requested_pending_window_ms } else { max_pending_window_ms };
         let pending = PendingAction<T> {
             id: object::new(ctx),
@@ -530,7 +567,9 @@ public fun execute_action<T>(
             action_type,
             target,
             amount,
-            risk_score,
+            onchain_floor,
+            reported_risk,
+            risk_score: effective_risk,
             created_at_ms: now_ms,
             expiry_ms: now_ms + window,
         };
@@ -540,7 +579,9 @@ public fun execute_action<T>(
             action_type,
             target,
             amount,
-            risk_score,
+            onchain_floor,
+            reported_risk,
+            risk_score: effective_risk,
         });
         transfer::transfer(pending, owner);
         option::none()
@@ -553,7 +594,7 @@ public fun execute_action<T>(
         assert!(bag::contains(&vault.balances, coin_key), ECoinTypeNotInVault);
         let bal: &mut Balance<T> = bag::borrow_mut(&mut vault.balances, coin_key);
         let out_coin = coin::take(bal, amount, ctx);
-        event::emit(ActionExecuted { cap_id, action_type, target, amount, risk_score });
+        event::emit(ActionExecuted { cap_id, action_type, target, amount, onchain_floor, reported_risk, risk_score: effective_risk });
         option::some(out_coin)
     }
 }
@@ -848,7 +889,7 @@ public fun approve_pending<T>(
     assert!(clock.timestamp_ms() < pending.expiry_ms, EPendingExpired);
 
     let cap_id = object::id(cap);
-    let PendingAction { id, cap_id: _, vault_id: _, action_type, target, amount, risk_score, created_at_ms: _, expiry_ms: _ } = pending;
+    let PendingAction { id, cap_id: _, vault_id: _, action_type, target, amount, onchain_floor, reported_risk, risk_score, created_at_ms: _, expiry_ms: _ } = pending;
 
     let coin_key = type_name::with_defining_ids<T>();
     // Owner may have removed this coin type limits since the action was
@@ -868,7 +909,7 @@ public fun approve_pending<T>(
     let out_coin = coin::take(bal, amount, ctx);
 
     event::emit(PendingApproved { pending_id: object::uid_to_inner(&id), cap_id });
-    event::emit(ActionExecuted { cap_id, action_type, target, amount, risk_score });
+    event::emit(ActionExecuted { cap_id, action_type, target, amount, onchain_floor, reported_risk, risk_score });
 
     object::delete(id);
     out_coin
