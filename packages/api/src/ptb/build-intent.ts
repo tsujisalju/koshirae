@@ -10,7 +10,7 @@ interface BuildParams {
   agentCapId: string;
   vaultId: string;
   request: SubmitIntentRequest;
-  riskScore: number;
+  reportedRisk: number;
   nonce: number;
 }
 
@@ -18,7 +18,7 @@ export async function buildIntentTransaction({
   agentCapId,
   vaultId,
   request,
-  riskScore,
+  reportedRisk,
   nonce,
 }: BuildParams) {
   const tx = new Transaction();
@@ -38,7 +38,7 @@ export async function buildIntentTransaction({
           ...shared,
           tx.pure.address(request.target),
           tx.pure.u64(request.amount),
-          tx.pure.u8(riskScore),
+          tx.pure.u8(reportedRisk),
           tx.pure.u64(nonce),
           tx.pure.u64(window),
           tx.object.clock(),
@@ -54,7 +54,7 @@ export async function buildIntentTransaction({
           tx.object(request.target),
           tx.pure.address(request.target),
           tx.pure.u64(request.amount),
-          tx.pure.u8(riskScore),
+          tx.pure.u8(reportedRisk),
           tx.pure.u64(nonce),
           tx.pure.u64(window),
           tx.object.clock(),
@@ -70,7 +70,7 @@ export async function buildIntentTransaction({
           tx.object(SUI_SYSTEM_STATE_ID),
           tx.pure.address(request.target),
           tx.pure.u64(request.amount),
-          tx.pure.u8(riskScore),
+          tx.pure.u8(reportedRisk),
           tx.pure.u64(nonce),
           tx.pure.u64(window),
           tx.object.clock(),
@@ -94,7 +94,7 @@ export async function buildIntentTransaction({
           tx.object(request.target),
           tx.pure.address(request.target),
           tx.pure.u64(request.amount),
-          tx.pure.u8(riskScore),
+          tx.pure.u8(reportedRisk),
           tx.pure.u64(nonce),
           tx.pure.u64(window),
           tx.object.clock(),

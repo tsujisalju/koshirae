@@ -1,4 +1,9 @@
-import { Intent, normalizeCoinType, SubmitIntentRequest } from "@koshirae/core";
+import {
+    AgentCap,
+    Intent,
+    normalizeCoinType,
+    SubmitIntentRequest,
+} from "@koshirae/core";
 import { randomUUID } from "crypto";
 import { Router } from "express";
 import { db } from "../db/client";
@@ -8,7 +13,7 @@ import {
     fetchOperatorCapOwner,
     findCreatedObjectId,
 } from "../chain/reads";
-import { mechanicalRiskEvaluator } from "../risk/evaluate";
+import { reportedRisk } from "../risk/evaluate";
 import { buildIntentTransaction } from "../ptb/build-intent";
 import { KOSHIRAE_PACKAGE_ID, suiClient } from "../chain/client";
 import { intents } from "../db/schema";
@@ -46,15 +51,47 @@ function rowToIntent(row: typeof intents.$inferSelect): Intent {
 }
 
 async function buildAndSignIntentTxBytes(params: {
-    agentCapId: string;
-    vaultId: string;
+    agentCap: AgentCap;
     request: SubmitIntentRequest;
-    riskScore: number;
     nonce: number;
 }): Promise<Uint8Array> {
-    const tx = await buildIntentTransaction(params);
-    tx.setSender(await fetchOperatorCapOwner(params.request.operatorCapId));
+    const { agentCap, request, nonce } = params;
+    const tx = await buildIntentTransaction({
+        agentCapId: agentCap.id,
+        vaultId: agentCap.vaultId,
+        request,
+        reportedRisk: reportedRisk({ agentCap, request }),
+        nonce,
+    });
+    tx.setSender(await fetchOperatorCapOwner(request.operatorCapId));
     return tx.build({ client: suiClient });
+}
+
+// Whether the intent executes or gets flagged is decided on-chain, so read it
+// from a simulation of the built tx instead of re-implementing the risk floor.
+// `tx.build` has already surfaced any Move abort by the time this runs.
+async function simulateIntentOutcome(
+    txBytes: Uint8Array,
+): Promise<{ status: "ready" | "pending_approval"; riskScore: number }> {
+    const result = await suiClient.core.simulateTransaction({
+        transaction: txBytes,
+        include: { events: true },
+    });
+    const tx = result.Transaction ?? result.FailedTransaction;
+    if (!tx.status.success)
+        throw new Error(tx.status.error?.message ?? "simulation failed");
+    for (const event of tx.events) {
+        const flagged = event.eventType.endsWith("::capability::ActionFlagged");
+        const executed = event.eventType.endsWith(
+            "::capability::ActionExecuted",
+        );
+        if (!flagged && !executed) continue;
+        const riskScore = Number(event.json?.risk_score);
+        if (!Number.isInteger(riskScore))
+            throw new Error("simulated action event has no risk_score");
+        return { status: flagged ? "pending_approval" : "ready", riskScore };
+    }
+    throw new Error("simulation emitted no ActionExecuted/ActionFlagged event");
 }
 
 function normalizeIntentRequest(
@@ -107,10 +144,8 @@ intentsRouter.post("/agent-caps/:agentCapId/intents", async (req, res) => {
 
         const agentCap = await fetchAgentCap(agentCapId);
         const txBytes = await buildAndSignIntentTxBytes({
-            agentCapId,
-            vaultId: agentCap.vaultId,
+            agentCap,
             request: intent.request,
-            riskScore: intent.riskScore ?? 0,
             nonce: agentCap.lastNonce + 1,
         });
         return res.status(200).json({
@@ -138,18 +173,12 @@ intentsRouter.post("/agent-caps/:agentCapId/intents", async (req, res) => {
     if (!agentCap.limits[coinType])
         return res.status(403).json({ error: "coin_type_not_allowed" });
 
-    const riskScore = mechanicalRiskEvaluator({ agentCap, request });
-    const nonce = agentCap.lastNonce + 1;
-    const status =
-        riskScore > agentCap.riskThreshold ? "pending_approval" : "ready";
-
     const txBytes = await buildAndSignIntentTxBytes({
-        agentCapId,
-        vaultId: agentCap.vaultId,
+        agentCap,
         request,
-        riskScore,
-        nonce,
+        nonce: agentCap.lastNonce + 1,
     });
+    const { status, riskScore } = await simulateIntentOutcome(txBytes);
 
     const id = randomUUID();
     await db.insert(intents).values({
