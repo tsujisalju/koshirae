@@ -15,7 +15,7 @@ export async function extractCreatedObjectId(
   const created = (tx?.effects?.changedObjects ?? []).find(
     (c) =>
       c.idOperation === "Created" &&
-      objectTypes[c.objectId]?.startsWith(typePrefix),
+      objectTypes[c.objectId]?.includes(typePrefix),
   );
   return created?.objectId;
 }

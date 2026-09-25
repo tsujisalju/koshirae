@@ -48,7 +48,10 @@ const DEPOSIT_AMOUNT: u64 = 1_000_000;
 const TX_LIMIT: u64 = 100_000;
 const PERIOD_LIMIT: u64 = 300_000;
 const PERIOD_LENGTH_MS: u64 = 86_400_000; // 1 day
-const RISK_THRESHOLD: u8 = 50;
+// Equals the on-chain floor of a full-limit transfer to a non-protocol target
+// (180 + 20), which only flags when the score is strictly greater.
+const RISK_THRESHOLD: u8 = 200;
+const STRICT_THRESHOLD: u8 = 50;
 const EXPIRY_MS: u64 = 999_999_999_999;
 const MAX_PENDING_WINDOW_MS: u64 = 3_600_000; // 1 hour ceiling on AgentCap's pending window
 const MOCK_RATE_USDC_PER_SUI: u64 = 950_000;
@@ -114,6 +117,128 @@ fun low_risk_action_releases_coin_to_recipient() {
     let released = scenario.take_from_sender<Coin<SUI>>();
     assert_eq!(released.value(), 50_000);
     destroy(released);
+
+    scenario.end();
+}
+
+/// Runs one operator-signed transfer to TARGET straight through
+/// `execute_action` (the direct-PTB path) with a caller-chosen reported risk.
+/// Returns whether it executed (true) or was flagged as pending (false).
+fun operator_transfer_to_target(scenario: &mut ts::Scenario, amount: u64, reported_risk: u8): bool {
+    scenario.next_tx(OPERATOR);
+    let mut vault = scenario.take_shared<Vault>();
+    let mut cap = scenario.take_shared<AgentCap>();
+    let op_cap = scenario.take_from_sender<OperatorCap>();
+    let clock = clock::create_for_testing(scenario.ctx());
+
+    let maybe_coin = capability::execute_action<SUI>(
+        &mut cap, &op_cap, &mut vault, ACTION_TRANSFER, TARGET, amount,
+        reported_risk, 1, MAX_PENDING_WINDOW_MS, &clock, scenario.ctx(),
+    );
+    let executed = maybe_coin.is_some();
+    if (executed) {
+        transfer::public_transfer(maybe_coin.destroy_some(), TARGET);
+    } else {
+        maybe_coin.destroy_none();
+    };
+
+    ts::return_shared(vault);
+    ts::return_shared(cap);
+    destroy(op_cap);
+    clock.destroy_for_testing();
+    executed
+}
+
+/// Takes the flagged PendingAction, asserts its (onchain_floor, reported_risk,
+/// risk_score), and rejects it so the scenario ends cleanly.
+fun assert_pending_scores_and_reject(scenario: &mut ts::Scenario, floor: u8, reported: u8, effective: u8) {
+    scenario.next_tx(OWNER);
+    let pending = scenario.take_from_sender<PendingAction<SUI>>();
+    let (f, r, e) = capability::pending_risk_for_testing(&pending);
+    assert_eq!(f, floor);
+    assert_eq!(r, reported);
+    assert_eq!(e, effective);
+    let cap = scenario.take_shared<AgentCap>();
+    capability::reject_pending(pending, &cap, scenario.ctx());
+    ts::return_shared(cap);
+}
+
+fun assert_vault_sui_balance(scenario: &mut ts::Scenario, expected: u64) {
+    scenario.next_tx(OWNER);
+    let vault = scenario.take_shared<Vault>();
+    assert_eq!(capability::balance_for_testing<SUI>(&vault), expected);
+    ts::return_shared(vault);
+}
+
+// The bypass the on-chain floor closes: an operator calling execute_action
+// directly with reported_risk = 0 on a full-limit transfer to a non-protocol
+// target still scores 180 + 20 = 200, above a threshold of 50.
+#[test]
+fun zero_reported_risk_cannot_bypass_onchain_floor() {
+    let mut scenario = ts::begin(OWNER);
+    setup(&mut scenario);
+
+    scenario.next_tx(OWNER);
+    let mut cap = scenario.take_shared<AgentCap>();
+    capability::update_risk_threshold(&mut cap, STRICT_THRESHOLD, scenario.ctx());
+    ts::return_shared(cap);
+
+    assert!(!operator_transfer_to_target(&mut scenario, TX_LIMIT, 0));
+    assert_pending_scores_and_reject(&mut scenario, 200, 0, 200);
+    assert_vault_sui_balance(&mut scenario, DEPOSIT_AMOUNT);
+
+    scenario.end();
+}
+
+// Reported risk can raise the score above the floor: 10_000 of a 100_000
+// limit to TARGET floors at 18 + 20 = 38, well under the threshold of 200.
+#[test]
+fun high_reported_risk_flags_action_with_low_floor() {
+    let mut scenario = ts::begin(OWNER);
+    setup(&mut scenario);
+
+    assert!(!operator_transfer_to_target(&mut scenario, 10_000, RISK_THRESHOLD + 1));
+    assert_pending_scores_and_reject(&mut scenario, 38, RISK_THRESHOLD + 1, RISK_THRESHOLD + 1);
+    assert_vault_sui_balance(&mut scenario, DEPOSIT_AMOUNT);
+
+    scenario.end();
+}
+
+// Small transfer (floor 18, no novelty since TARGET is a protocol target)
+// with a low reported score stays under the threshold and executes normally.
+#[test]
+fun small_transfer_to_protocol_target_with_low_reported_risk_executes() {
+    let mut scenario = ts::begin(OWNER);
+    let clock = clock::create_for_testing(scenario.ctx());
+
+    let vault = capability::new_vault(PERIOD_LENGTH_MS, scenario.ctx());
+    capability::create_agent_cap_for_vault(
+        &vault, PERIOD_LENGTH_MS,
+        vector[ACTION_TRANSFER], vector[TARGET], vector[TARGET],
+        STRICT_THRESHOLD, EXPIRY_MS, MAX_PENDING_WINDOW_MS, scenario.ctx(),
+    );
+    capability::share_vault(vault);
+
+    scenario.next_tx(OWNER);
+    let mut cap = scenario.take_shared<AgentCap>();
+    capability::mint_operator_cap(&cap, OPERATOR, scenario.ctx());
+    capability::add_coin_limits<SUI>(&mut cap, TX_LIMIT, PERIOD_LIMIT, &clock, scenario.ctx());
+    ts::return_shared(cap);
+
+    scenario.next_tx(OWNER);
+    let mut vault = scenario.take_shared<Vault>();
+    let funding = coin::mint_for_testing<SUI>(DEPOSIT_AMOUNT, scenario.ctx());
+    capability::deposit(&mut vault, funding, scenario.ctx());
+    ts::return_shared(vault);
+    clock.destroy_for_testing();
+
+    assert!(operator_transfer_to_target(&mut scenario, 10_000, 0));
+
+    scenario.next_tx(TARGET);
+    let released = scenario.take_from_sender<Coin<SUI>>();
+    assert_eq!(released.value(), 10_000);
+    destroy(released);
+    assert_vault_sui_balance(&mut scenario, DEPOSIT_AMOUNT - 10_000);
 
     scenario.end();
 }
