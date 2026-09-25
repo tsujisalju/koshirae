@@ -1,7 +1,7 @@
 #[test_only]
 module koshirae::capability_tests;
 
-use koshirae::capability::{Self, Vault, AgentCap, PendingAction};
+use koshirae::capability::{Self, Vault, AgentCap, AdminCap, PendingAction};
 use koshirae::operator_cap::OperatorCap;
 use koshirae::mock_dex::{Self, MockPool};
 use koshirae::mock_usdc::MOCK_USDC;
@@ -31,6 +31,8 @@ const EOverVaultPeriodLimit: u64 = 16;
 const EStaleNonce: u64 = 17;
 const EPendingExpired: u64 = 18;
 const ENotExpiredYet: u64 = 19;
+const EWrongVersion: u64 = 20;
+const EAlreadyMigrated: u64 = 21;
 
 /* Mirrors capability.move's private action-type codes. */
 const ACTION_TRANSFER: u8 = 0;
@@ -1479,5 +1481,99 @@ fun withdraw_by_non_owner_aborts() {
     let withdrawn = capability::withdraw<SUI>(&mut vault, 100_000, scenario.ctx());
     destroy(withdrawn);
     ts::return_shared(vault);
+    scenario.end();
+}
+
+/* ===== Versioning and migration ===== */
+
+#[test, expected_failure(abort_code = EWrongVersion, location = capability)]
+fun stale_cap_version_rejects_execute_transfer() {
+    let mut scenario = ts::begin(OWNER);
+    setup(&mut scenario);
+
+    scenario.next_tx(OPERATOR);
+    let mut vault = scenario.take_shared<Vault>();
+    let mut cap = scenario.take_shared<AgentCap>();
+    let op_cap = scenario.take_from_sender<OperatorCap>();
+    let clock = clock::create_for_testing(scenario.ctx());
+
+    capability::set_cap_version_for_testing(&mut cap, 0);
+    capability::execute_transfer<SUI>(
+        &mut cap, &op_cap, &mut vault, TARGET, 10_000, 0, 1, MAX_PENDING_WINDOW_MS, &clock, scenario.ctx(),
+    );
+
+    ts::return_shared(vault);
+    ts::return_shared(cap);
+    destroy(op_cap);
+    clock.destroy_for_testing();
+    scenario.end();
+}
+
+#[test, expected_failure(abort_code = EWrongVersion, location = capability)]
+fun stale_vault_version_rejects_deposit() {
+    let mut scenario = ts::begin(OWNER);
+    setup(&mut scenario);
+
+    scenario.next_tx(OWNER);
+    let mut vault = scenario.take_shared<Vault>();
+    capability::set_vault_version_for_testing(&mut vault, 0);
+    let funding = coin::mint_for_testing<SUI>(1_000, scenario.ctx());
+    capability::deposit(&mut vault, funding, scenario.ctx());
+
+    ts::return_shared(vault);
+    scenario.end();
+}
+
+#[test, expected_failure(abort_code = ENotOwner, location = capability)]
+fun non_owner_cannot_migrate_stale_agent_cap() {
+    let mut scenario = ts::begin(OWNER);
+    setup(&mut scenario);
+
+    scenario.next_tx(ATTACKER);
+    let mut cap = scenario.take_shared<AgentCap>();
+    capability::set_cap_version_for_testing(&mut cap, 0);
+    capability::migrate_agent_cap(&mut cap, scenario.ctx());
+
+    ts::return_shared(cap);
+    scenario.end();
+}
+
+#[test]
+fun admin_migrate_restores_stale_agent_cap() {
+    let mut scenario = ts::begin(OWNER);
+    setup(&mut scenario);
+
+    scenario.next_tx(OWNER);
+    capability::init_for_testing(scenario.ctx());
+
+    scenario.next_tx(OWNER);
+    let admin_cap = scenario.take_from_sender<AdminCap>();
+    let mut cap = scenario.take_shared<AgentCap>();
+    capability::set_cap_version_for_testing(&mut cap, 0);
+    capability::admin_migrate_agent_cap(&admin_cap, &mut cap);
+    ts::return_shared(cap);
+    destroy(admin_cap);
+
+    // 10_000 of a 100_000 limit to TARGET floors at 38, under the threshold.
+    assert!(operator_transfer_to_target(&mut scenario, 10_000, 0));
+
+    scenario.next_tx(TARGET);
+    let released = scenario.take_from_sender<Coin<SUI>>();
+    assert_eq!(released.value(), 10_000);
+    destroy(released);
+
+    scenario.end();
+}
+
+#[test, expected_failure(abort_code = EAlreadyMigrated, location = capability)]
+fun migrate_current_version_cap_aborts_already_migrated() {
+    let mut scenario = ts::begin(OWNER);
+    setup(&mut scenario);
+
+    scenario.next_tx(OWNER);
+    let mut cap = scenario.take_shared<AgentCap>();
+    capability::migrate_agent_cap(&mut cap, scenario.ctx());
+
+    ts::return_shared(cap);
     scenario.end();
 }

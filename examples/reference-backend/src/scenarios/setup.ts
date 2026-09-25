@@ -64,14 +64,8 @@ export async function setupAgentCap(
     );
 
     const [agentCapId, vaultId] = await Promise.all([
-        extractCreatedObjectId(
-            createDigest,
-            `${KOSHIRAE_PACKAGE_ID}::capability::AgentCap`,
-        ),
-        extractCreatedObjectId(
-            createDigest,
-            `${KOSHIRAE_PACKAGE_ID}::capability::Vault`,
-        ),
+        extractCreatedObjectId(createDigest, "::capability::AgentCap"),
+        extractCreatedObjectId(createDigest, "::capability::Vault"),
     ]);
     if (!agentCapId || !vaultId)
         throw new Error(
@@ -90,7 +84,7 @@ export async function setupAgentCap(
 
     const operatorCapId = await extractCreatedObjectId(
         mintDigest,
-        `${KOSHIRAE_PACKAGE_ID}::operator_cap::OperatorCap`,
+        "::operator_cap::OperatorCap",
     );
     if (!operatorCapId) throw new Error("Could not find created OperatorCap");
 

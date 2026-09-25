@@ -28,10 +28,7 @@ async function main() {
         ownerKeypair,
         suiClient,
     );
-    const poolId = await extractCreatedObjectId(
-        digest,
-        `${KOSHIRAE_PACKAGE_ID}::mock_dex::MockPool`,
-    );
+    const poolId = await extractCreatedObjectId(digest, "::mock_dex::MockPool");
     console.log(`Mock pool created — set MOCK_POOL_ID=${poolId}`);
 }
 main();

@@ -19,6 +19,8 @@ const MOVE_ABORT_MAP: Record<number, { status: number; error: string }> = {
     17: { status: 409, error: "stale_nonce" },
     18: { status: 409, error: "pending_action_expired" },
     19: { status: 409, error: "not_expired_yet" },
+    20: { status: 409, error: "migration_required" },
+    21: { status: 409, error: "already_migrated" },
 };
 
 export function moveAbortResponse(
