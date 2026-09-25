@@ -126,6 +126,11 @@ public struct CapCreated has copy, drop {
     owner: address,
 }
 
+public struct VaultCreated has copy, drop {
+    vault_id: ID,
+    owner: address,
+}
+
 public struct OperatorCapMinted has copy, drop {
     operator_cap_id: ID,
     agent_cap_id: ID,
@@ -230,6 +235,7 @@ public fun set_vault_version_for_testing(vault: &mut Vault, version: u64) { vaul
 /// Returned by value, to be composed with create_agent_cap_for_vault
 /// or direct to share_vault at the end in one PTB.
 public fun new_vault(period_length_ms: u64, ctx: &mut TxContext): Vault {
+    event::emit(VaultCreated { vault_id: object::new(ctx), owner: ctx.sender() });
     Vault {
         id: object::new(ctx),
         version: VERSION,
