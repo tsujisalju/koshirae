@@ -115,6 +115,7 @@ export async function fetchAgentCap(id: string): Promise<AgentCap> {
     const f = AgentCapBcs.parse(object.content);
     return AgentCap.parse({
         id,
+        version: Number(f.version),
         vaultId: f.vaultId,
         owner: f.owner,
         generation: Number(f.generation),
@@ -152,6 +153,7 @@ export async function fetchVault(id: string): Promise<Vault> {
     const f = VaultBcs.parse(object.content);
     return Vault.parse({
         id,
+        version: Number(f.version),
         owner: f.owner,
         periodLengthMs: Number(f.periodLengthMs),
         limits: parseCoinLimitMap(f.limits),
@@ -179,7 +181,7 @@ export async function findCreatedObjectId(
     const created = (tx?.effects?.changedObjects ?? []).find(
         (c) =>
             c.idOperation === "Created" &&
-            objectTypes[c.objectId]?.startsWith(typePrefix),
+            objectTypes[c.objectId]?.includes(typePrefix),
     );
     return created?.objectId;
 }
