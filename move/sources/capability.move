@@ -16,6 +16,8 @@ use cetus_clmm::pool::Pool;
 use koshirae::mock_dex::{Self, MockPool};
 use koshirae::mock_usdc::MOCK_USDC;
 
+const VERSION: u64 = 1;
+
 /* Errors */
 const EInactive: u64 = 0;
 const EExpired: u64 = 1;
@@ -37,6 +39,8 @@ const EOverVaultPeriodLimit: u64 = 16;
 const EStaleNonce: u64 = 17;
 const EPendingExpired: u64 = 18;
 const ENotExpiredYet: u64 = 19;
+const EWrongVersion: u64 = 20;
+const EAlreadyMigrated: u64 = 21;
 
 /* Action type codes */
 const ACTION_TRANSFER: u8 = 0;
@@ -46,11 +50,15 @@ const ACTION_CETUS_SWAP: u8 = 3;
 
 /* Structs */
 
+/// AdminCap decides when objects move to a new version of the contract
+public struct AdminCap has key, store { id: UID }
+
 /// Shared object that holds the user's funds.
 /// Per-vault limits added to track total vault spending across multiple agents
 /// Limits not required for single agent setup
 public struct Vault has key {
     id: UID,
+    version: u64,
     owner: address,
     balances: Bag,
     limits: VecMap<TypeName, CoinLimits>,
@@ -70,6 +78,7 @@ public struct CoinLimits has store {
 /// this object without the user co-signing every transaction
 public struct AgentCap has key {
     id: UID,
+    version: u64,
     vault_id: ID,
     owner: address,
     generation: u64,
@@ -104,6 +113,12 @@ public struct PendingAction<phantom T> has key {
 }
 
 /* Events */
+
+public struct ObjectMigrated has copy, drop {
+    object_id: ID,
+    from_version: u64,
+    to_version: u64,
+}
 
 public struct CapCreated has copy, drop {
     cap_id: ID,
@@ -158,6 +173,57 @@ public struct CapDeactivated has copy, drop {
     cap_id: ID,
 }
 
+
+fun init(ctx: &mut TxContext) {
+    transfer::transfer(AdminCap { id: object::new(ctx) }, ctx.sender());
+}
+
+#[test_only]
+public fun init_for_testing(ctx: &mut TxContext) { init(ctx) }
+
+/* Versioning and Migration */
+
+fun assert_cap_version(cap: &AgentCap) { assert!(cap.version == VERSION, EWrongVersion); }
+fun assert_vault_version(vault: &Vault) { assert!(vault.version == VERSION, EWrongVersion); }
+
+public fun migrate_agent_cap(cap: &mut AgentCap, ctx:  &TxContext) {
+    assert!(cap.owner == ctx.sender(), ENotOwner);
+    do_migrate_agent_cap(cap);
+}
+
+public fun admin_migrate_agent_cap(_: &AdminCap, cap: &mut AgentCap) {
+    do_migrate_agent_cap(cap);
+}
+
+fun do_migrate_agent_cap(cap: &mut AgentCap) {
+    assert!(cap.version < VERSION, EAlreadyMigrated);
+    let from_version = cap.version;
+    cap.version = VERSION;
+    event::emit(ObjectMigrated { object_id: object::id(cap), from_version, to_version: VERSION });
+}
+
+public fun migrate_vault(vault: &mut Vault, ctx:  &TxContext) {
+    assert!(vault.owner == ctx.sender(), ENotOwner);
+    do_migrate_vault(vault);
+}
+
+public fun admin_migrate_vault(_: &AdminCap, vault: &mut Vault) {
+    do_migrate_vault(vault);
+}
+
+fun do_migrate_vault(vault: &mut Vault) {
+    assert!(vault.version < VERSION, EAlreadyMigrated);
+    let from_version = vault.version;
+    vault.version = VERSION;
+    event::emit(ObjectMigrated { object_id: object::id(vault), from_version, to_version: VERSION });
+}
+
+#[test_only]
+public fun set_cap_version_for_testing(cap: &mut AgentCap, version: u64) { cap.version = version; }
+
+#[test_only]
+public fun set_vault_version_for_testing(vault: &mut Vault, version: u64) { vault.version = version; }
+
 /* Vault Functions */
 
 /// Create vault with no limits and no agents attached
@@ -166,6 +232,7 @@ public struct CapDeactivated has copy, drop {
 public fun new_vault(period_length_ms: u64, ctx: &mut TxContext): Vault {
     Vault {
         id: object::new(ctx),
+        version: VERSION,
         owner: ctx.sender(),
         balances: bag::new(ctx),
         limits: vec_map::empty(),
@@ -179,6 +246,7 @@ public fun share_vault(vault: Vault) {
 
 /// Shared logic for actions to put assets into vault.
 fun put_into_vault<T>(vault: &mut Vault, payment: Coin<T>) {
+    assert_vault_version(vault);
     let key = type_name::with_defining_ids<T>();
     if (bag::contains(&vault.balances, key)) {
         let bal: &mut Balance<T> = bag::borrow_mut(&mut vault.balances, key);
@@ -191,6 +259,7 @@ fun put_into_vault<T>(vault: &mut Vault, payment: Coin<T>) {
 /// Lets the user deposit funds to the shared vault. The agent can only make
 /// use of funds in the vault, not directly from the user's wallet.
 public fun deposit<T>(vault: &mut Vault, payment: Coin<T>, ctx: &TxContext) {
+    assert_vault_version(vault);
     assert!(vault.owner == ctx.sender(), ENotOwner);
     put_into_vault(vault, payment);
 }
@@ -199,6 +268,7 @@ public fun deposit<T>(vault: &mut Vault, payment: Coin<T>, ctx: &TxContext) {
 /// or policy. Deliberately takes no AgentCap, this is the owner exercising
 /// ownership of their own vault, not something an agent policy governs.
 public fun withdraw<T>(vault: &mut Vault, amount: u64, ctx: &mut TxContext): Coin<T> {
+    assert_vault_version(vault);
     assert!(vault.owner == ctx.sender(), ENotOwner);
     let key = type_name::with_defining_ids<T>();
     assert!(bag::contains(&vault.balances, key), ECoinTypeNotInVault);
@@ -213,6 +283,7 @@ public fun add_vault_coin_limits<T>(
     clock: &Clock,
     ctx: &TxContext,
 ) {
+    assert_vault_version(vault);
     assert!(vault.owner == ctx.sender(), ENotOwner);
     let key = type_name::with_defining_ids<T>();
     assert!(!vault.limits.contains(&key), ECoinTypeAlreadyAllowed);
@@ -225,6 +296,7 @@ public fun add_vault_coin_limits<T>(
 }
 
 public fun update_vault_spending_limit_per_tx<T>(vault: &mut Vault, spending_limit_per_tx: u64, ctx: &TxContext) {
+    assert_vault_version(vault);
     assert!(vault.owner == ctx.sender(), ENotOwner);
     let key = type_name::with_defining_ids<T>();
     assert!(vault.limits.contains(&key), ECoinTypeNotAllowed);
@@ -232,6 +304,7 @@ public fun update_vault_spending_limit_per_tx<T>(vault: &mut Vault, spending_lim
 }
 
 public fun update_vault_spending_limit_period<T>(vault: &mut Vault, spending_limit_period: u64, ctx: &TxContext) {
+    assert_vault_version(vault);
     assert!(vault.owner == ctx.sender(), ENotOwner);
     let key = type_name::with_defining_ids<T>();
     assert!(vault.limits.contains(&key), ECoinTypeNotAllowed);
@@ -239,6 +312,7 @@ public fun update_vault_spending_limit_period<T>(vault: &mut Vault, spending_lim
 }
 
 public fun remove_vault_coin_limits<T>(vault: &mut Vault, ctx: &TxContext) {
+    assert_vault_version(vault);
     assert!(vault.owner == ctx.sender(), ENotOwner);
     let key = type_name::with_defining_ids<T>();
     assert!(vault.limits.contains(&key), ECoinTypeNotAllowed);
@@ -247,6 +321,7 @@ public fun remove_vault_coin_limits<T>(vault: &mut Vault, ctx: &TxContext) {
 }
 
 public fun update_vault_period_length_ms(vault: &mut Vault, period_length_ms: u64, ctx: &TxContext) {
+    assert_vault_version(vault);
     assert!(vault.owner == ctx.sender(), ENotOwner);
     vault.period_length_ms = period_length_ms;
 }
@@ -305,6 +380,7 @@ public fun create_agent_cap_for_vault(
     max_pending_window_ms: u64,
     ctx: &mut TxContext,
 ) {
+    assert_vault_version(vault);
     assert!(vault.owner == ctx.sender(), ENotOwner);
     let vault_id = object::id(vault);
 
@@ -322,6 +398,7 @@ public fun create_agent_cap_for_vault(
 
     let cap = AgentCap {
         id: object::new(ctx),
+        version: VERSION,
         vault_id,
         owner: ctx.sender(),
         generation: 0,
@@ -354,6 +431,7 @@ public fun mint_operator_cap(
     operator: address,
     ctx: &mut TxContext
 ) {
+    assert_cap_version(cap);
     assert!(cap.owner == ctx.sender(), ENotOwner);
     let op_cap = operator_cap::new(object::id(cap), cap.generation, ctx);
 
@@ -369,6 +447,7 @@ public fun mint_operator_cap(
 /// Owner-only. Bumps generation to invalidate every OperatorCap referencing
 /// this AgentCap at once. Rotating operators is revoke + mint
 public fun revoke_operator(cap: &mut AgentCap, ctx: &mut TxContext) {
+    assert_cap_version(cap);
     assert!(cap.owner == ctx.sender(), ENotOwner);
     cap.generation = cap.generation + 1;
     event::emit(OperatorRevoked {
@@ -389,6 +468,7 @@ public fun add_coin_limits<T>(
     clock: &Clock,
     ctx: &TxContext,
 ) {
+    assert_cap_version(cap);
     assert!(cap.owner == ctx.sender(), ENotOwner);
     let key = type_name::with_defining_ids<T>();
     assert!(!cap.limits.contains(&key), ECoinTypeAlreadyAllowed);
@@ -404,6 +484,7 @@ public fun remove_coin_limits<T>(
     cap: &mut AgentCap,
     ctx: &TxContext,
 ) {
+    assert_cap_version(cap);
     assert!(cap.owner == ctx.sender(), ENotOwner);
     let key = type_name::with_defining_ids<T>();
     assert!(cap.limits.contains(&key), ECoinTypeNotAllowed);
@@ -416,6 +497,7 @@ public fun add_allowed_target(
     target: address,
     ctx: &TxContext,
 ) {
+    assert_cap_version(cap);
     assert!(cap.owner == ctx.sender(), ENotOwner);
     cap.allowed_targets.insert(target);
 }
@@ -426,6 +508,7 @@ public fun remove_allowed_target(
     target: address,
     ctx: &TxContext,
 ) {
+    assert_cap_version(cap);
     assert!(cap.owner == ctx.sender(), ENotOwner);
     assert!(!cap.protocol_targets.contains(&target), ECannotRemoveProtocolTarget);
     cap.allowed_targets.remove(&target);
@@ -436,6 +519,7 @@ public fun update_spending_limit_per_tx<T>(
     spending_limit_per_tx: u64,
     ctx: &TxContext,
 ) {
+    assert_cap_version(cap);
     assert!(cap.owner == ctx.sender(), ENotOwner);
     let key = type_name::with_defining_ids<T>();
     assert!(cap.limits.contains(&key), ECoinTypeNotAllowed);
@@ -447,6 +531,7 @@ public fun update_spending_limit_period<T>(
     spending_limit_period: u64,
     ctx: &TxContext,
 ) {
+    assert_cap_version(cap);
     assert!(cap.owner == ctx.sender(), ENotOwner);
     let key = type_name::with_defining_ids<T>();
     assert!(cap.limits.contains(&key), ECoinTypeNotAllowed);
@@ -458,6 +543,7 @@ public fun update_period_length_ms(
     period_length_ms: u64,
     ctx: &TxContext,
 ) {
+    assert_cap_version(cap);
     assert!(cap.owner == ctx.sender(), ENotOwner);
     cap.period_length_ms = period_length_ms;
 }
@@ -467,6 +553,7 @@ public fun update_risk_threshold(
     risk_threshold: u8,
     ctx: &TxContext,
 ) {
+    assert_cap_version(cap);
     assert!(cap.owner == ctx.sender(), ENotOwner);
     cap.risk_threshold = risk_threshold;
 }
@@ -476,11 +563,13 @@ public fun update_expiry_ms(
     expiry_ms: u64,
     ctx: &TxContext,
 ) {
+    assert_cap_version(cap);
     assert!(cap.owner == ctx.sender(), ENotOwner);
     cap.expiry_ms = expiry_ms;
 }
 
 public fun deactivate(cap: &mut AgentCap, ctx: &TxContext) {
+    assert_cap_version(cap);
     assert!(cap.owner == ctx.sender(), ENotOwner);
     cap.active = false;
     event::emit(CapDeactivated { cap_id: object::id(cap) });
@@ -515,6 +604,8 @@ public fun execute_action<T>(
     clock: &Clock,
     ctx: &mut TxContext,
 ): Option<Coin<T>> {
+    assert_cap_version(cap);
+    assert_vault_version(vault);
     assert_valid_operator(op_cap, cap);
     assert!(cap.vault_id == object::id(vault), EWrongVault);
     assert!(cap.active, EInactive);
@@ -883,6 +974,8 @@ public fun approve_pending<T>(
     clock: &Clock,
     ctx: &mut TxContext,
 ): Coin<T> {
+    assert_cap_version(cap);
+    assert_vault_version(vault);
     assert!(cap.owner == ctx.sender(), ENotOwner);
     assert!(pending.cap_id == object::id(cap), EWrongCap);
     assert!(pending.vault_id == object::id(vault), EWrongVault);
@@ -917,6 +1010,7 @@ public fun approve_pending<T>(
 
 
 public fun reject_pending<T>(pending: PendingAction<T>, cap: &AgentCap, ctx: &TxContext) {
+    assert_cap_version(cap);
     assert!(cap.owner == ctx.sender(), ENotOwner);
     assert!(pending.cap_id == object::id(cap), EWrongCap);
 
