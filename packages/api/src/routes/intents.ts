@@ -234,7 +234,7 @@ intentsRouter.post("/intents/:id/submitted", async (req, res) => {
         const coinType = resolveIntentCoinType(row.request);
         pendingActionId = await findCreatedObjectId(
             txDigest,
-            `${KOSHIRAE_PACKAGE_ID}::capability::PendingAction<${coinType}>`,
+            `::capability::PendingAction<${coinType}>`,
         );
     }
 

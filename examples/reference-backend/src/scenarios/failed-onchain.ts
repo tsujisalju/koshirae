@@ -39,7 +39,7 @@ export async function runFailedOnChainScenario() {
     );
     const operatorCapBId = await extractCreatedObjectId(
         mintDigest,
-        `${KOSHIRAE_PACKAGE_ID}::operator_cap::OperatorCap`,
+        "::operator_cap::OperatorCap",
     );
     if (!operatorCapBId) throw new Error("Second OperatorCap mint failed");
 

@@ -52,14 +52,8 @@ export async function runSharedVaultScenario() {
         ownerSign,
     );
     const [agentCapAId, vaultId] = await Promise.all([
-        extractCreatedObjectId(
-            createDigest,
-            `${KOSHIRAE_PACKAGE_ID}::capability::AgentCap`,
-        ),
-        extractCreatedObjectId(
-            createDigest,
-            `${KOSHIRAE_PACKAGE_ID}::capability::Vault`,
-        ),
+        extractCreatedObjectId(createDigest, "::capability::AgentCap"),
+        extractCreatedObjectId(createDigest, "::capability::Vault"),
     ]);
     if (!agentCapAId || !vaultId)
         throw new Error("Agent A / vault creation failed");
@@ -71,7 +65,7 @@ export async function runSharedVaultScenario() {
     );
     const agentCapBId = await extractCreatedObjectId(
         attachDigest,
-        `${KOSHIRAE_PACKAGE_ID}::capability::AgentCap`,
+        "::capability::AgentCap",
     );
     if (!agentCapBId) throw new Error("Agent B creation failed");
 
@@ -88,7 +82,7 @@ export async function runSharedVaultScenario() {
     );
     const operatorCapAId = await extractCreatedObjectId(
         mintADigest,
-        `${KOSHIRAE_PACKAGE_ID}::operator_cap::OperatorCap`,
+        "::operator_cap::OperatorCap",
     );
     const mintBDigest = await withVersionRaceRetry(
         () =>
@@ -101,7 +95,7 @@ export async function runSharedVaultScenario() {
     );
     const operatorCapBId = await extractCreatedObjectId(
         mintBDigest,
-        `${KOSHIRAE_PACKAGE_ID}::operator_cap::OperatorCap`,
+        "::operator_cap::OperatorCap",
     );
     if (!operatorCapAId || !operatorCapBId)
         throw new Error("Operator cap minting failed");
@@ -193,7 +187,10 @@ export async function runSharedVaultScenario() {
             "UNEXPECTED: Agent B succeeded despite the shared vault ceiling",
         );
     } catch (err) {
-        if (err instanceof ApiError && err.errorCode === "over_vault_period_limit")
+        if (
+            err instanceof ApiError &&
+            err.errorCode === "over_vault_period_limit"
+        )
             console.log(
                 `Expected failure, vault-level ceiling correctly blocked Agent B: ${err.message}`,
             );
