@@ -11,6 +11,7 @@ import { z } from "zod";
 import { KOSHIRAE_PACKAGE_ID, suiClient } from "../chain/client";
 import { fetchAgentCap, fetchVault } from "../chain/reads";
 import { waitForAfterDigest } from "../chain/wait";
+import { ApiError } from "../errors";
 
 export const agentCapsRouter = Router();
 
@@ -48,10 +49,11 @@ function addCreateAgentCapCall(
 agentCapsRouter.post("/agent-caps", async (req, res) => {
   const parsed = CreateAgentCapWithVaultRequest.safeParse(req.body);
   if (!parsed.success)
-    return res.status(400).json({
-      error: "invalid_request",
-      details: z.treeifyError(parsed.error),
-    });
+    throw new ApiError(
+      "invalid_request",
+      "Invalid request body",
+      z.treeifyError(parsed.error),
+    );
   const { owner, vault, agentCap } = parsed.data;
 
   const tx = new Transaction();
@@ -76,10 +78,11 @@ agentCapsRouter.post("/agent-caps", async (req, res) => {
 agentCapsRouter.post("/vaults/:vaultId/agent-caps", async (req, res) => {
   const parsed = AgentCapInputWithoutVault.safeParse(req.body);
   if (!parsed.success)
-    return res.status(400).json({
-      error: "invalid_request",
-      details: z.treeifyError(parsed.error),
-    });
+    throw new ApiError(
+      "invalid_request",
+      "Invalid request body",
+      z.treeifyError(parsed.error),
+    );
 
   await waitForAfterDigest(req.query.afterDigest);
   const owner = (await fetchVault(req.params.vaultId)).owner;
@@ -95,10 +98,11 @@ agentCapsRouter.post("/vaults/:vaultId/agent-caps", async (req, res) => {
 agentCapsRouter.post("/agent-caps/:agentCapId/operators", async (req, res) => {
   const parsed = MintOperatorRequest.safeParse(req.body);
   if (!parsed.success)
-    return res.status(400).json({
-      error: "invalid_request",
-      details: z.treeifyError(parsed.error),
-    });
+    throw new ApiError(
+      "invalid_request",
+      "Invalid request body",
+      z.treeifyError(parsed.error),
+    );
   await waitForAfterDigest(req.query.afterDigest);
   const owner = (await fetchAgentCap(req.params.agentCapId)).owner;
   const tx = new Transaction();
@@ -128,9 +132,9 @@ agentCapsRouter.post(
       arguments: [tx.object(req.params.agentCapId)],
     });
     const txBytes = await tx.build({ client: suiClient });
-    return res
-      .status(200)
-      .json({ unsignedTransaction: Buffer.from(txBytes).toString("base64") });
+    return res.status(200).json({
+      unsignedTransaction: Buffer.from(txBytes).toString("base64"),
+    });
   },
 );
 
@@ -139,10 +143,11 @@ agentCapsRouter.post(
   async (req, res) => {
     const parsed = CoinLimitsInput.safeParse(req.body);
     if (!parsed.success) {
-      return res.status(400).json({
-        error: "invalid_request",
-        details: z.treeifyError(parsed.error),
-      });
+      throw new ApiError(
+        "invalid_request",
+        "Invalid coin limits",
+        z.treeifyError(parsed.error),
+      );
     }
     await waitForAfterDigest(req.query.afterDigest);
 
@@ -160,9 +165,9 @@ agentCapsRouter.post(
       ],
     });
     const txBytes = await tx.build({ client: suiClient });
-    return res
-      .status(200)
-      .json({ unsignedTransaction: Buffer.from(txBytes).toString("base64") });
+    return res.status(200).json({
+      unsignedTransaction: Buffer.from(txBytes).toString("base64"),
+    });
   },
 );
 
@@ -171,10 +176,11 @@ agentCapsRouter.patch(
   async (req, res) => {
     const parsed = CoinLimitsInput.partial().safeParse(req.body);
     if (!parsed.success) {
-      return res.status(400).json({
-        error: "invalid_request",
-        details: z.treeifyError(parsed.error),
-      });
+      throw new ApiError(
+        "invalid_request",
+        "Invalid coin limits",
+        z.treeifyError(parsed.error),
+      );
     }
     await waitForAfterDigest(req.query.afterDigest);
 
@@ -202,9 +208,9 @@ agentCapsRouter.patch(
       });
     }
     const txBytes = await tx.build({ client: suiClient });
-    return res
-      .status(200)
-      .json({ unsignedTransaction: Buffer.from(txBytes).toString("base64") });
+    return res.status(200).json({
+      unsignedTransaction: Buffer.from(txBytes).toString("base64"),
+    });
   },
 );
 
@@ -222,9 +228,9 @@ agentCapsRouter.delete(
       arguments: [tx.object(req.params.agentCapId)],
     });
     const txBytes = await tx.build({ client: suiClient });
-    return res
-      .status(200)
-      .json({ unsignedTransaction: Buffer.from(txBytes).toString("base64") });
+    return res.status(200).json({
+      unsignedTransaction: Buffer.from(txBytes).toString("base64"),
+    });
   },
 );
 
@@ -232,7 +238,7 @@ agentCapsRouter.get("/agent-caps/:agentCapId", async (req, res) => {
   try {
     return res.status(200).json(await fetchAgentCap(req.params.agentCapId));
   } catch {
-    return res.status(404).json({ error: "agent_cap_not_found" });
+    throw new ApiError("not_found", "Agent cap not found");
   }
 });
 
@@ -243,10 +249,11 @@ agentCapsRouter.post(
   async (req, res) => {
     const parsed = CoinLimitsInput.safeParse(req.body);
     if (!parsed.success)
-      return res.status(400).json({
-        error: "invalid_request",
-        details: z.treeifyError(parsed.error),
-      });
+      throw new ApiError(
+        "invalid_request",
+        "Invalid request body",
+        z.treeifyError(parsed.error),
+      );
     await waitForAfterDigest(req.query.afterDigest);
 
     const owner = (await fetchVault(req.params.vaultId)).owner;
@@ -263,9 +270,9 @@ agentCapsRouter.post(
       ],
     });
     const txBytes = await tx.build({ client: suiClient });
-    return res
-      .status(200)
-      .json({ unsignedTransaction: Buffer.from(txBytes).toString("base64") });
+    return res.status(200).json({
+      unsignedTransaction: Buffer.from(txBytes).toString("base64"),
+    });
   },
 );
 
@@ -274,10 +281,11 @@ agentCapsRouter.patch(
   async (req, res) => {
     const parsed = VaultCoinLimitsUpdate.safeParse(req.body);
     if (!parsed.success)
-      return res.status(400).json({
-        error: "invalid_request",
-        details: z.treeifyError(parsed.error),
-      });
+      throw new ApiError(
+        "invalid_request",
+        "Invalid request body",
+        z.treeifyError(parsed.error),
+      );
     await waitForAfterDigest(req.query.afterDigest);
 
     const owner = (await fetchVault(req.params.vaultId)).owner;
@@ -304,9 +312,9 @@ agentCapsRouter.patch(
       });
     }
     const txBytes = await tx.build({ client: suiClient });
-    return res
-      .status(200)
-      .json({ unsignedTransaction: Buffer.from(txBytes).toString("base64") });
+    return res.status(200).json({
+      unsignedTransaction: Buffer.from(txBytes).toString("base64"),
+    });
   },
 );
 
@@ -324,9 +332,9 @@ agentCapsRouter.delete(
       arguments: [tx.object(req.params.vaultId)],
     });
     const txBytes = await tx.build({ client: suiClient });
-    return res
-      .status(200)
-      .json({ unsignedTransaction: Buffer.from(txBytes).toString("base64") });
+    return res.status(200).json({
+      unsignedTransaction: Buffer.from(txBytes).toString("base64"),
+    });
   },
 );
 
@@ -335,10 +343,11 @@ agentCapsRouter.patch("/vaults/:vaultId", async (req, res) => {
     .object({ periodLengthMs: z.number().int().positive() })
     .safeParse(req.body);
   if (!parsed.success)
-    return res.status(400).json({
-      error: "invalid_request",
-      details: z.treeifyError(parsed.error),
-    });
+    throw new ApiError(
+      "invalid_request",
+      "Invalid request body",
+      z.treeifyError(parsed.error),
+    );
   await waitForAfterDigest(req.query.afterDigest);
 
   const owner = (await fetchVault(req.params.vaultId)).owner;
