@@ -1,8 +1,8 @@
 import { AgentCap, SubmitIntentRequest } from "@koshirae/core";
 
 export interface RiskContext {
-    agentCap: AgentCap;
-    request: SubmitIntentRequest;
+  agentCap: AgentCap;
+  request: SubmitIntentRequest;
 }
 
 export type RiskEvaluator = (ctx: RiskContext) => number;
@@ -14,8 +14,7 @@ const evaluators: RiskEvaluator[] = [];
 
 // Highest advisory score, sent on-chain as `reported_risk`.
 export function reportedRisk(ctx: RiskContext): number {
-    const scores = evaluators.map((e) => e(ctx));
-    if (ctx.request.agentReportedRisk !== undefined)
-        scores.push(ctx.request.agentReportedRisk);
-    return Math.min(Math.max(0, ...scores), 255);
+  const scores = evaluators.map((e) => e(ctx));
+  if (ctx.request.agentReportedRisk !== undefined) scores.push(ctx.request.agentReportedRisk);
+  return Math.min(Math.max(0, ...scores), 255);
 }

@@ -8,9 +8,7 @@ import { SUI_TYPE_ARG } from "@mysten/sui/utils";
 
 export async function runTransferScenario() {
   const recipient = operatorKeypair.toSuiAddress();
-  const { agentCapId, operatorCapId, lastDigest } = await setupAgentCap([
-    recipient,
-  ]);
+  const { agentCapId, operatorCapId, lastDigest } = await setupAgentCap([recipient]);
 
   const idempotencyKey = randomUUID();
   // submitIntent is idempotent on this key, so requestFreshTx below is safe

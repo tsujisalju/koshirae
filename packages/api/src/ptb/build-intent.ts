@@ -22,11 +22,7 @@ export async function buildIntentTransaction({
   nonce,
 }: BuildParams) {
   const tx = new Transaction();
-  const shared = [
-    tx.object(agentCapId),
-    tx.object(request.operatorCapId),
-    tx.object(vaultId),
-  ];
+  const shared = [tx.object(agentCapId), tx.object(request.operatorCapId), tx.object(vaultId)];
   const window = request.requestedPendingWindowMs ?? DEFAULT_PENDING_WINDOW_MS;
 
   switch (request.actionType) {

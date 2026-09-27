@@ -8,9 +8,7 @@ export function normalizeCoinType(coinType: string): string {
 /** SUI in the same normalized form requests and chain reads carry. */
 export const SUI_COIN_TYPE = normalizeCoinType(SUI_TYPE_ARG);
 
-export const CoinAmount = z
-  .string()
-  .regex(/^\d+$/, "must be a decimal integer string");
+export const CoinAmount = z.string().regex(/^\d+$/, "must be a decimal integer string");
 export type CoinAmount = z.infer<typeof CoinAmount>;
 
 export const SuiAddress = z

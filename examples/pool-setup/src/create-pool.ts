@@ -19,18 +19,14 @@ import {
   MAX_TICK_INDEX,
 } from "@cetusprotocol/common-sdk";
 
-const SUI_RPC_URL =
-  process.env.SUI_RPC_URL ?? "https://fullnode.testnet.sui.io:443";
+const SUI_RPC_URL = process.env.SUI_RPC_URL ?? "https://fullnode.testnet.sui.io:443";
 const KOSHIRAE_PACKAGE_ID = process.env.KOSHIRAE_PACKAGE_ID!;
 const MOCK_USDC_TREASURY_CAP_ID = process.env.MOCK_USDC_TREASURY_CAP_ID!;
 const SIGNER_PRIVATE_KEY = process.env.SCRIPT_SIGNER_KEY!;
 
-const CETUS_PACKAGE_ID =
-  "0x6bbdf09f9fa0baa1524080a5b8991042e95061c4e1206217279aec51ba08edf7";
-const CETUS_GLOBAL_CONFIG_ID =
-  "0xc6273f844b4bc258952c4e477697aa12c918c8e08106fac6b934811298c9820a";
-const CETUS_POOLS_ID =
-  "0x20a086e6fa0741b3ca77d033a65faf0871349b986ddbdde6fa1d85d78a5f4222";
+const CETUS_PACKAGE_ID = "0x6bbdf09f9fa0baa1524080a5b8991042e95061c4e1206217279aec51ba08edf7";
+const CETUS_GLOBAL_CONFIG_ID = "0xc6273f844b4bc258952c4e477697aa12c918c8e08106fac6b934811298c9820a";
+const CETUS_POOLS_ID = "0x20a086e6fa0741b3ca77d033a65faf0871349b986ddbdde6fa1d85d78a5f4222";
 
 const SUI_TYPE = "0x2::sui::SUI";
 const MOCK_USDC_TYPE = `${KOSHIRAE_PACKAGE_ID}::mock_usdc::MOCK_USDC`;
@@ -62,10 +58,7 @@ async function main() {
 
   const mockUsdc = tx.moveCall({
     target: `${KOSHIRAE_PACKAGE_ID}::mock_usdc::mint_mock_usdc`,
-    arguments: [
-      tx.object(MOCK_USDC_TREASURY_CAP_ID),
-      tx.pure.u64(10_000_000_000),
-    ], // 10,000 mUSDC (6dp)
+    arguments: [tx.object(MOCK_USDC_TREASURY_CAP_ID), tx.pure.u64(10_000_000_000)], // 10,000 mUSDC (6dp)
   });
   const [suiForPool] = tx.splitCoins(tx.gas, [tx.pure.u64(2_000_000_000)]); // 2 SUI
 
@@ -84,14 +77,8 @@ async function main() {
   // Widest tick range valid at this spacing: Cetus requires
   // MIN_TICK_INDEX < tick_lower < tick_upper < MAX_TICK_INDEX, and both
   // bounds must be multiples of the tick spacing.
-  const tickLowerIdx = TickMath.getInitializeTickIndex(
-    MIN_TICK_INDEX,
-    TICK_SPACING,
-  );
-  const tickUpperIdx = TickMath.getInitializeTickIndex(
-    MAX_TICK_INDEX,
-    TICK_SPACING,
-  );
+  const tickLowerIdx = TickMath.getInitializeTickIndex(MIN_TICK_INDEX, TICK_SPACING);
+  const tickUpperIdx = TickMath.getInitializeTickIndex(MAX_TICK_INDEX, TICK_SPACING);
 
   const [position, leftoverA, leftoverB] = tx.moveCall({
     target: `${CETUS_PACKAGE_ID}::pool_creator::create_pool_v3`,
@@ -113,10 +100,7 @@ async function main() {
 
   // Position and both leftover-change coins are non-drop values the PTB
   // must explicitly place somewhere.
-  tx.transferObjects(
-    [position, leftoverA, leftoverB],
-    tx.pure.address(signer.toSuiAddress()),
-  );
+  tx.transferObjects([position, leftoverA, leftoverB], tx.pure.address(signer.toSuiAddress()));
 
   const result = await client.core.signAndExecuteTransaction({
     transaction: tx,

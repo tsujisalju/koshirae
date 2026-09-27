@@ -1,4 +1,5 @@
 # Koshirae
+
 <img width="432" height="144" alt="koshirae-logomark-bg" src="https://github.com/user-attachments/assets/06187a0d-4f7c-46d1-ab5d-67ec7ad2f286" />
 
 Scoped Agent Wallets on Sui — a Move-based trust layer for autonomous

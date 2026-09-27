@@ -8,8 +8,7 @@ import { Transaction } from "@mysten/sui/transactions";
 import { SuiGrpcClient } from "@mysten/sui/grpc";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 
-const SUI_RPC_URL =
-  process.env.SUI_RPC_URL ?? "https://fullnode.testnet.sui.io:443";
+const SUI_RPC_URL = process.env.SUI_RPC_URL ?? "https://fullnode.testnet.sui.io:443";
 const KOSHIRAE_PACKAGE_ID = process.env.KOSHIRAE_PACKAGE_ID!;
 const MOCK_USDC_TREASURY_CAP_ID = process.env.MOCK_USDC_TREASURY_CAP_ID!;
 const SIGNER_PRIVATE_KEY = process.env.SCRIPT_SIGNER_KEY!;

@@ -13,9 +13,7 @@ export async function extractCreatedObjectId(
   const tx = result.Transaction ?? result.FailedTransaction;
   const objectTypes = tx?.objectTypes ?? {};
   const created = (tx?.effects?.changedObjects ?? []).find(
-    (c) =>
-      c.idOperation === "Created" &&
-      objectTypes[c.objectId]?.includes(typePrefix),
+    (c) => c.idOperation === "Created" && objectTypes[c.objectId]?.includes(typePrefix),
   );
   return created?.objectId;
 }

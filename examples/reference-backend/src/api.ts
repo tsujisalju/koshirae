@@ -1,151 +1,134 @@
 import {
-    ErrorResponse,
-    type AgentCap,
-    type AgentCapPolicyInput,
-    type CoinLimitsInput,
-    type ErrorCode,
-    type Intent,
-    type SubmitIntentRequest,
-    type VaultInput,
+  ErrorResponse,
+  type AgentCap,
+  type AgentCapPolicyInput,
+  type CoinLimitsInput,
+  type ErrorCode,
+  type Intent,
+  type SubmitIntentRequest,
+  type VaultInput,
 } from "@koshirae/core";
 import { API_BASE_URL } from "./client";
 
 export class ApiError extends Error {
-    constructor(
-        readonly status: number,
-        readonly code: ErrorCode | undefined,
-        message: string,
-    ) {
-        super(message);
-        this.name = "ApiError";
-    }
+  constructor(
+    readonly status: number,
+    readonly code: ErrorCode | undefined,
+    message: string,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
 }
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-    const res = await fetch(`${API_BASE_URL}${path}`, {
-        ...init,
-        headers: { "content-type": "application/json", ...init?.headers },
-    });
-    if (!res.ok) {
-        const body = await res.text();
-        let code: ErrorCode | undefined;
-        let message = body;
-        try {
-            const parsed = ErrorResponse.safeParse(JSON.parse(body));
-            if (parsed.success) {
-                code = parsed.data.error.code;
-                message = parsed.data.error.message;
-            }
-        } catch {}
-        throw new ApiError(
-            res.status,
-            code,
-            `${init?.method ?? "GET"} ${path} -> ${res.status}: ${message}`,
-        );
-    }
-    return res.json() as Promise<T>;
+  const res = await fetch(`${API_BASE_URL}${path}`, {
+    ...init,
+    headers: { "content-type": "application/json", ...init?.headers },
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    let code: ErrorCode | undefined;
+    let message = body;
+    try {
+      const parsed = ErrorResponse.safeParse(JSON.parse(body));
+      if (parsed.success) {
+        code = parsed.data.error.code;
+        message = parsed.data.error.message;
+      }
+    } catch {}
+    throw new ApiError(
+      res.status,
+      code,
+      `${init?.method ?? "GET"} ${path} -> ${res.status}: ${message}`,
+    );
+  }
+  return res.json() as Promise<T>;
 }
 
 const withAfter = (path: string, afterDigest?: string) =>
-    afterDigest
-        ? `${path}?afterDigest=${encodeURIComponent(afterDigest)}`
-        : path;
+  afterDigest ? `${path}?afterDigest=${encodeURIComponent(afterDigest)}` : path;
 
 export const createAgentCapWithVault = (
-    body: {
-        owner: string;
-        vault: VaultInput;
-        agentCap: Omit<AgentCapPolicyInput, "vaultId">;
-    },
-    afterDigest?: string,
+  body: {
+    owner: string;
+    vault: VaultInput;
+    agentCap: Omit<AgentCapPolicyInput, "vaultId">;
+  },
+  afterDigest?: string,
 ) =>
-    apiFetch<{ unsignedTransaction: string }>(
-        withAfter("/agent-caps", afterDigest),
-        { method: "POST", body: JSON.stringify(body) },
-    );
+  apiFetch<{ unsignedTransaction: string }>(withAfter("/agent-caps", afterDigest), {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
 
 export const createAgentCapForVault = (
-    vaultId: string,
-    body: Omit<AgentCapPolicyInput, "vaultId">,
-    afterDigest?: string,
+  vaultId: string,
+  body: Omit<AgentCapPolicyInput, "vaultId">,
+  afterDigest?: string,
 ) =>
-    apiFetch<{ unsignedTransaction: string }>(
-        withAfter(`/vaults/${vaultId}/agent-caps`, afterDigest),
-        { method: "POST", body: JSON.stringify(body) },
-    );
+  apiFetch<{ unsignedTransaction: string }>(
+    withAfter(`/vaults/${vaultId}/agent-caps`, afterDigest),
+    { method: "POST", body: JSON.stringify(body) },
+  );
 
-export const mintOperatorCap = (
-    agentCapId: string,
-    operator: string,
-    afterDigest?: string,
-) =>
-    apiFetch<{ unsignedTransaction: string }>(
-        withAfter(`/agent-caps/${agentCapId}/operators`, afterDigest),
-        { method: "POST", body: JSON.stringify({ operator }) },
-    );
+export const mintOperatorCap = (agentCapId: string, operator: string, afterDigest?: string) =>
+  apiFetch<{ unsignedTransaction: string }>(
+    withAfter(`/agent-caps/${agentCapId}/operators`, afterDigest),
+    { method: "POST", body: JSON.stringify({ operator }) },
+  );
 
 export const addAgentCapCoinLimits = (
-    agentCapId: string,
-    coinType: string,
-    body: CoinLimitsInput,
-    afterDigest?: string,
+  agentCapId: string,
+  coinType: string,
+  body: CoinLimitsInput,
+  afterDigest?: string,
 ) =>
-    apiFetch<{ unsignedTransaction: string }>(
-        withAfter(
-            `/agent-caps/${agentCapId}/coin-limits/${encodeURIComponent(coinType)}`,
-            afterDigest,
-        ),
-        { method: "POST", body: JSON.stringify(body) },
-    );
+  apiFetch<{ unsignedTransaction: string }>(
+    withAfter(`/agent-caps/${agentCapId}/coin-limits/${encodeURIComponent(coinType)}`, afterDigest),
+    { method: "POST", body: JSON.stringify(body) },
+  );
 
 export const addVaultCoinLimits = (
-    vaultId: string,
-    coinType: string,
-    body: CoinLimitsInput,
-    afterDigest?: string,
+  vaultId: string,
+  coinType: string,
+  body: CoinLimitsInput,
+  afterDigest?: string,
 ) =>
-    apiFetch<{ unsignedTransaction: string }>(
-        withAfter(
-            `/vaults/${vaultId}/coin-limits/${encodeURIComponent(coinType)}`,
-            afterDigest,
-        ),
-        { method: "POST", body: JSON.stringify(body) },
-    );
+  apiFetch<{ unsignedTransaction: string }>(
+    withAfter(`/vaults/${vaultId}/coin-limits/${encodeURIComponent(coinType)}`, afterDigest),
+    { method: "POST", body: JSON.stringify(body) },
+  );
 
 export const submitIntent = (
-    agentCapId: string,
-    request: SubmitIntentRequest,
-    afterDigest?: string,
+  agentCapId: string,
+  request: SubmitIntentRequest,
+  afterDigest?: string,
 ) =>
-    apiFetch<Intent & { unsignedTransaction: string }>(
-        withAfter(`/agent-caps/${agentCapId}/intents`, afterDigest),
-        { method: "POST", body: JSON.stringify(request) },
-    );
+  apiFetch<Intent & { unsignedTransaction: string }>(
+    withAfter(`/agent-caps/${agentCapId}/intents`, afterDigest),
+    { method: "POST", body: JSON.stringify(request) },
+  );
 
 export const approveIntent = (intentId: string, afterDigest?: string) =>
-    apiFetch<{ unsignedTransaction: string }>(
-        withAfter(`/intents/${intentId}/approve`, afterDigest),
-        { method: "POST" },
-    );
+  apiFetch<{ unsignedTransaction: string }>(
+    withAfter(`/intents/${intentId}/approve`, afterDigest),
+    { method: "POST" },
+  );
 
 export const rejectIntent = (intentId: string, afterDigest?: string) =>
-    apiFetch<{ unsignedTransaction: string }>(
-        withAfter(`/intents/${intentId}/reject`, afterDigest),
-        { method: "POST" },
-    );
+  apiFetch<{ unsignedTransaction: string }>(withAfter(`/intents/${intentId}/reject`, afterDigest), {
+    method: "POST",
+  });
 
-export const reportSubmitted = (
-    intentId: string,
-    txDigest: string,
-    afterDigest?: string,
-) =>
-    apiFetch<{ status: string }>(
-        withAfter(`/intents/${intentId}/submitted`, afterDigest),
-        { method: "POST", body: JSON.stringify({ txDigest }) },
-    );
+export const reportSubmitted = (intentId: string, txDigest: string, afterDigest?: string) =>
+  apiFetch<{ status: string }>(withAfter(`/intents/${intentId}/submitted`, afterDigest), {
+    method: "POST",
+    body: JSON.stringify({ txDigest }),
+  });
 
 export const getIntent = (intentId: string, afterDigest?: string) =>
-    apiFetch<Intent>(withAfter(`/intents/${intentId}`, afterDigest));
+  apiFetch<Intent>(withAfter(`/intents/${intentId}`, afterDigest));
 
 export const getAgentCap = (agentCapId: string, afterDigest?: string) =>
-    apiFetch<AgentCap>(withAfter(`/agent-caps/${agentCapId}`, afterDigest));
+  apiFetch<AgentCap>(withAfter(`/agent-caps/${agentCapId}`, afterDigest));

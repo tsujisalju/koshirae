@@ -1,7 +1,4 @@
-import {
-  signAndSubmit as sdkSignAndSubmit,
-  TransactionFailedError,
-} from "@koshirae/sdk";
+import { signAndSubmit as sdkSignAndSubmit, TransactionFailedError } from "@koshirae/sdk";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { Transaction } from "@mysten/sui/transactions";
 import { suiClient } from "./client";

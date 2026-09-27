@@ -13,5 +13,5 @@
   "reportMissingParameterType": false,
   "reportUnannotatedClassAttribute": false,
   "reportUnusedCallResult": false,
-  "reportDeprecated": false,
+  "reportDeprecated": false
 }
