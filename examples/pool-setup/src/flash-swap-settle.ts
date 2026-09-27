@@ -12,17 +12,14 @@ import { SuiGrpcClient } from "@mysten/sui/grpc";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { fixSuiObjectId, isSortedSymbols } from "@cetusprotocol/common-sdk";
 
-const SUI_RPC_URL =
-  process.env.SUI_RPC_URL ?? "https://fullnode.testnet.sui.io:443";
+const SUI_RPC_URL = process.env.SUI_RPC_URL ?? "https://fullnode.testnet.sui.io:443";
 const KOSHIRAE_PACKAGE_ID = process.env.KOSHIRAE_PACKAGE_ID!;
 const SIGNER_PRIVATE_KEY = process.env.SCRIPT_SIGNER_KEY!;
 // Set after running create-pool.ts.
 const POOL_ID = process.env.CETUS_POOL_ID!;
 
-const CETUS_PACKAGE_ID =
-  "0x6bbdf09f9fa0baa1524080a5b8991042e95061c4e1206217279aec51ba08edf7";
-const CETUS_GLOBAL_CONFIG_ID =
-  "0xc6273f844b4bc258952c4e477697aa12c918c8e08106fac6b934811298c9820a";
+const CETUS_PACKAGE_ID = "0x6bbdf09f9fa0baa1524080a5b8991042e95061c4e1206217279aec51ba08edf7";
+const CETUS_GLOBAL_CONFIG_ID = "0xc6273f844b4bc258952c4e477697aa12c918c8e08106fac6b934811298c9820a";
 
 const SUI_TYPE = "0x2::sui::SUI";
 const MOCK_USDC_TYPE = `${KOSHIRAE_PACKAGE_ID}::mock_usdc::MOCK_USDC`;
@@ -62,9 +59,7 @@ async function main() {
       tx.pure.u64(SWAP_AMOUNT_IN),
       // MAX/MIN_SQRT_PRICE-equivalent "no limit" sentinel — same values
       // baked into capability.move's finish_cetus_swap_* functions.
-      tx.pure.u128(
-        a2b ? 4295048016n : 79226673515401279992447579055n,
-      ),
+      tx.pure.u128(a2b ? 4295048016n : 79226673515401279992447579055n),
       tx.object.clock(),
     ],
   });

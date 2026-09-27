@@ -18,8 +18,7 @@ export async function buildApprovalTransaction({
   agentCapId,
   vaultId,
 }: BuildApprovalParams) {
-  if (!intent.pendingActionId)
-    throw new Error("Intent has no recorded PendingAction id");
+  if (!intent.pendingActionId) throw new Error("Intent has no recorded PendingAction id");
   const { request } = intent;
   const tx = new Transaction();
   const pendingArg = tx.object(intent.pendingActionId);
@@ -29,12 +28,7 @@ export async function buildApprovalTransaction({
       tx.moveCall({
         target: `${KOSHIRAE_PACKAGE_ID}::capability::approve_pending_and_send`,
         typeArguments: [request.coinType],
-        arguments: [
-          pendingArg,
-          tx.object(agentCapId),
-          tx.object(vaultId),
-          tx.object.clock(),
-        ],
+        arguments: [pendingArg, tx.object(agentCapId), tx.object(vaultId), tx.object.clock()],
       });
       break;
     case "mockSwap":

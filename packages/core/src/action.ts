@@ -1,11 +1,6 @@
 import { z } from "zod";
 
-export const ActionType = z.enum([
-  "transfer",
-  "mockSwap",
-  "stake",
-  "cetusSwap",
-]);
+export const ActionType = z.enum(["transfer", "mockSwap", "stake", "cetusSwap"]);
 export type ActionType = z.infer<typeof ActionType>;
 
 // Mirrors action type codes in /move/sources/capabilty.move directly

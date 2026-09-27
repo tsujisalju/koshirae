@@ -49,11 +49,7 @@ function addCreateAgentCapCall(
 agentCapsRouter.post("/agent-caps", async (req, res) => {
   const parsed = CreateAgentCapWithVaultRequest.safeParse(req.body);
   if (!parsed.success)
-    throw new ApiError(
-      "invalid_request",
-      "Invalid request body",
-      z.treeifyError(parsed.error),
-    );
+    throw new ApiError("invalid_request", "Invalid request body", z.treeifyError(parsed.error));
   const { owner, vault, agentCap } = parsed.data;
 
   const tx = new Transaction();
@@ -69,20 +65,14 @@ agentCapsRouter.post("/agent-caps", async (req, res) => {
   });
 
   const txBytes = await tx.build({ client: suiClient });
-  return res
-    .status(200)
-    .json({ unsignedTransaction: Buffer.from(txBytes).toString("base64") });
+  return res.status(200).json({ unsignedTransaction: Buffer.from(txBytes).toString("base64") });
 });
 
 // attach a new agent against an already-shared vault
 agentCapsRouter.post("/vaults/:vaultId/agent-caps", async (req, res) => {
   const parsed = AgentCapInputWithoutVault.safeParse(req.body);
   if (!parsed.success)
-    throw new ApiError(
-      "invalid_request",
-      "Invalid request body",
-      z.treeifyError(parsed.error),
-    );
+    throw new ApiError("invalid_request", "Invalid request body", z.treeifyError(parsed.error));
 
   await waitForAfterDigest(req.query.afterDigest);
   const owner = (await fetchVault(req.params.vaultId)).owner;
@@ -90,149 +80,112 @@ agentCapsRouter.post("/vaults/:vaultId/agent-caps", async (req, res) => {
   tx.setSender(owner);
   addCreateAgentCapCall(tx, tx.object(req.params.vaultId), parsed.data);
   const txBytes = await tx.build({ client: suiClient });
-  return res
-    .status(200)
-    .json({ unsignedTransaction: Buffer.from(txBytes).toString("base64") });
+  return res.status(200).json({ unsignedTransaction: Buffer.from(txBytes).toString("base64") });
 });
 
 agentCapsRouter.post("/agent-caps/:agentCapId/operators", async (req, res) => {
   const parsed = MintOperatorRequest.safeParse(req.body);
   if (!parsed.success)
-    throw new ApiError(
-      "invalid_request",
-      "Invalid request body",
-      z.treeifyError(parsed.error),
-    );
+    throw new ApiError("invalid_request", "Invalid request body", z.treeifyError(parsed.error));
   await waitForAfterDigest(req.query.afterDigest);
   const owner = (await fetchAgentCap(req.params.agentCapId)).owner;
   const tx = new Transaction();
   tx.setSender(owner);
   tx.moveCall({
     target: `${KOSHIRAE_PACKAGE_ID}::capability::mint_operator_cap`,
+    arguments: [tx.object(req.params.agentCapId), tx.pure.address(parsed.data.operator)],
+  });
+  const txBytes = await tx.build({ client: suiClient });
+  return res.status(200).json({ unsignedTransaction: Buffer.from(txBytes).toString("base64") });
+});
+
+agentCapsRouter.post("/agent-caps/:agentCapId/operators/revoke", async (req, res) => {
+  await waitForAfterDigest(req.query.afterDigest);
+  const owner = (await fetchAgentCap(req.params.agentCapId)).owner;
+  const tx = new Transaction();
+  tx.setSender(owner);
+  tx.moveCall({
+    target: `${KOSHIRAE_PACKAGE_ID}::capability::revoke_operator`,
+    arguments: [tx.object(req.params.agentCapId)],
+  });
+  const txBytes = await tx.build({ client: suiClient });
+  return res.status(200).json({
+    unsignedTransaction: Buffer.from(txBytes).toString("base64"),
+  });
+});
+
+agentCapsRouter.post("/agent-caps/:agentCapId/coin-limits/:coinType", async (req, res) => {
+  const parsed = CoinLimitsInput.safeParse(req.body);
+  if (!parsed.success) {
+    throw new ApiError("invalid_request", "Invalid coin limits", z.treeifyError(parsed.error));
+  }
+  await waitForAfterDigest(req.query.afterDigest);
+
+  const owner = (await fetchAgentCap(req.params.agentCapId)).owner;
+  const tx = new Transaction();
+  tx.setSender(owner);
+  tx.moveCall({
+    target: `${KOSHIRAE_PACKAGE_ID}::capability::add_coin_limits`,
+    typeArguments: [req.params.coinType],
     arguments: [
       tx.object(req.params.agentCapId),
-      tx.pure.address(parsed.data.operator),
+      tx.pure.u64(parsed.data.spendingLimitPerTx),
+      tx.pure.u64(parsed.data.spendingLimitPeriod),
+      tx.object.clock(),
     ],
   });
   const txBytes = await tx.build({ client: suiClient });
-  return res
-    .status(200)
-    .json({ unsignedTransaction: Buffer.from(txBytes).toString("base64") });
+  return res.status(200).json({
+    unsignedTransaction: Buffer.from(txBytes).toString("base64"),
+  });
 });
 
-agentCapsRouter.post(
-  "/agent-caps/:agentCapId/operators/revoke",
-  async (req, res) => {
-    await waitForAfterDigest(req.query.afterDigest);
-    const owner = (await fetchAgentCap(req.params.agentCapId)).owner;
-    const tx = new Transaction();
-    tx.setSender(owner);
-    tx.moveCall({
-      target: `${KOSHIRAE_PACKAGE_ID}::capability::revoke_operator`,
-      arguments: [tx.object(req.params.agentCapId)],
-    });
-    const txBytes = await tx.build({ client: suiClient });
-    return res.status(200).json({
-      unsignedTransaction: Buffer.from(txBytes).toString("base64"),
-    });
-  },
-);
+agentCapsRouter.patch("/agent-caps/:agentCapId/coin-limits/:coinType", async (req, res) => {
+  const parsed = CoinLimitsInput.partial().safeParse(req.body);
+  if (!parsed.success) {
+    throw new ApiError("invalid_request", "Invalid coin limits", z.treeifyError(parsed.error));
+  }
+  await waitForAfterDigest(req.query.afterDigest);
 
-agentCapsRouter.post(
-  "/agent-caps/:agentCapId/coin-limits/:coinType",
-  async (req, res) => {
-    const parsed = CoinLimitsInput.safeParse(req.body);
-    if (!parsed.success) {
-      throw new ApiError(
-        "invalid_request",
-        "Invalid coin limits",
-        z.treeifyError(parsed.error),
-      );
-    }
-    await waitForAfterDigest(req.query.afterDigest);
-
-    const owner = (await fetchAgentCap(req.params.agentCapId)).owner;
-    const tx = new Transaction();
-    tx.setSender(owner);
+  const owner = (await fetchAgentCap(req.params.agentCapId)).owner;
+  const tx = new Transaction();
+  tx.setSender(owner);
+  if (parsed.data.spendingLimitPerTx !== undefined) {
     tx.moveCall({
-      target: `${KOSHIRAE_PACKAGE_ID}::capability::add_coin_limits`,
+      target: `${KOSHIRAE_PACKAGE_ID}::capability::update_spending_limit_per_tx`,
       typeArguments: [req.params.coinType],
-      arguments: [
-        tx.object(req.params.agentCapId),
-        tx.pure.u64(parsed.data.spendingLimitPerTx),
-        tx.pure.u64(parsed.data.spendingLimitPeriod),
-        tx.object.clock(),
-      ],
+      arguments: [tx.object(req.params.agentCapId), tx.pure.u64(parsed.data.spendingLimitPerTx)],
     });
-    const txBytes = await tx.build({ client: suiClient });
-    return res.status(200).json({
-      unsignedTransaction: Buffer.from(txBytes).toString("base64"),
-    });
-  },
-);
-
-agentCapsRouter.patch(
-  "/agent-caps/:agentCapId/coin-limits/:coinType",
-  async (req, res) => {
-    const parsed = CoinLimitsInput.partial().safeParse(req.body);
-    if (!parsed.success) {
-      throw new ApiError(
-        "invalid_request",
-        "Invalid coin limits",
-        z.treeifyError(parsed.error),
-      );
-    }
-    await waitForAfterDigest(req.query.afterDigest);
-
-    const owner = (await fetchAgentCap(req.params.agentCapId)).owner;
-    const tx = new Transaction();
-    tx.setSender(owner);
-    if (parsed.data.spendingLimitPerTx !== undefined) {
-      tx.moveCall({
-        target: `${KOSHIRAE_PACKAGE_ID}::capability::update_spending_limit_per_tx`,
-        typeArguments: [req.params.coinType],
-        arguments: [
-          tx.object(req.params.agentCapId),
-          tx.pure.u64(parsed.data.spendingLimitPerTx),
-        ],
-      });
-    }
-    if (parsed.data.spendingLimitPeriod !== undefined) {
-      tx.moveCall({
-        target: `${KOSHIRAE_PACKAGE_ID}::capability::update_spending_limit_period`,
-        typeArguments: [req.params.coinType],
-        arguments: [
-          tx.object(req.params.agentCapId),
-          tx.pure.u64(parsed.data.spendingLimitPeriod),
-        ],
-      });
-    }
-    const txBytes = await tx.build({ client: suiClient });
-    return res.status(200).json({
-      unsignedTransaction: Buffer.from(txBytes).toString("base64"),
-    });
-  },
-);
-
-agentCapsRouter.delete(
-  "/agent-caps/:agentCapId/coin-limits/:coinType",
-  async (req, res) => {
-    await waitForAfterDigest(req.query.afterDigest);
-
-    const owner = (await fetchAgentCap(req.params.agentCapId)).owner;
-    const tx = new Transaction();
-    tx.setSender(owner);
+  }
+  if (parsed.data.spendingLimitPeriod !== undefined) {
     tx.moveCall({
-      target: `${KOSHIRAE_PACKAGE_ID}::capability::remove_coin_limits`,
+      target: `${KOSHIRAE_PACKAGE_ID}::capability::update_spending_limit_period`,
       typeArguments: [req.params.coinType],
-      arguments: [tx.object(req.params.agentCapId)],
+      arguments: [tx.object(req.params.agentCapId), tx.pure.u64(parsed.data.spendingLimitPeriod)],
     });
-    const txBytes = await tx.build({ client: suiClient });
-    return res.status(200).json({
-      unsignedTransaction: Buffer.from(txBytes).toString("base64"),
-    });
-  },
-);
+  }
+  const txBytes = await tx.build({ client: suiClient });
+  return res.status(200).json({
+    unsignedTransaction: Buffer.from(txBytes).toString("base64"),
+  });
+});
+
+agentCapsRouter.delete("/agent-caps/:agentCapId/coin-limits/:coinType", async (req, res) => {
+  await waitForAfterDigest(req.query.afterDigest);
+
+  const owner = (await fetchAgentCap(req.params.agentCapId)).owner;
+  const tx = new Transaction();
+  tx.setSender(owner);
+  tx.moveCall({
+    target: `${KOSHIRAE_PACKAGE_ID}::capability::remove_coin_limits`,
+    typeArguments: [req.params.coinType],
+    arguments: [tx.object(req.params.agentCapId)],
+  });
+  const txBytes = await tx.build({ client: suiClient });
+  return res.status(200).json({
+    unsignedTransaction: Buffer.from(txBytes).toString("base64"),
+  });
+});
 
 agentCapsRouter.get("/agent-caps/:agentCapId", async (req, res) => {
   const agentCapId = objectIdParam(req.params.agentCapId, "agentCapId");
@@ -241,110 +194,81 @@ agentCapsRouter.get("/agent-caps/:agentCapId", async (req, res) => {
 
 const VaultCoinLimitsUpdate = CoinLimitsInput.partial();
 
-agentCapsRouter.post(
-  "/vaults/:vaultId/coin-limits/:coinType",
-  async (req, res) => {
-    const parsed = CoinLimitsInput.safeParse(req.body);
-    if (!parsed.success)
-      throw new ApiError(
-        "invalid_request",
-        "Invalid request body",
-        z.treeifyError(parsed.error),
-      );
-    await waitForAfterDigest(req.query.afterDigest);
+agentCapsRouter.post("/vaults/:vaultId/coin-limits/:coinType", async (req, res) => {
+  const parsed = CoinLimitsInput.safeParse(req.body);
+  if (!parsed.success)
+    throw new ApiError("invalid_request", "Invalid request body", z.treeifyError(parsed.error));
+  await waitForAfterDigest(req.query.afterDigest);
 
-    const owner = (await fetchVault(req.params.vaultId)).owner;
-    const tx = new Transaction();
-    tx.setSender(owner);
+  const owner = (await fetchVault(req.params.vaultId)).owner;
+  const tx = new Transaction();
+  tx.setSender(owner);
+  tx.moveCall({
+    target: `${KOSHIRAE_PACKAGE_ID}::capability::add_vault_coin_limits`,
+    typeArguments: [req.params.coinType],
+    arguments: [
+      tx.object(req.params.vaultId),
+      tx.pure.u64(parsed.data.spendingLimitPerTx),
+      tx.pure.u64(parsed.data.spendingLimitPeriod),
+      tx.object.clock(),
+    ],
+  });
+  const txBytes = await tx.build({ client: suiClient });
+  return res.status(200).json({
+    unsignedTransaction: Buffer.from(txBytes).toString("base64"),
+  });
+});
+
+agentCapsRouter.patch("/vaults/:vaultId/coin-limits/:coinType", async (req, res) => {
+  const parsed = VaultCoinLimitsUpdate.safeParse(req.body);
+  if (!parsed.success)
+    throw new ApiError("invalid_request", "Invalid request body", z.treeifyError(parsed.error));
+  await waitForAfterDigest(req.query.afterDigest);
+
+  const owner = (await fetchVault(req.params.vaultId)).owner;
+  const tx = new Transaction();
+  tx.setSender(owner);
+  if (parsed.data.spendingLimitPerTx !== undefined) {
     tx.moveCall({
-      target: `${KOSHIRAE_PACKAGE_ID}::capability::add_vault_coin_limits`,
+      target: `${KOSHIRAE_PACKAGE_ID}::capability::update_vault_spending_limit_per_tx`,
       typeArguments: [req.params.coinType],
-      arguments: [
-        tx.object(req.params.vaultId),
-        tx.pure.u64(parsed.data.spendingLimitPerTx),
-        tx.pure.u64(parsed.data.spendingLimitPeriod),
-        tx.object.clock(),
-      ],
+      arguments: [tx.object(req.params.vaultId), tx.pure.u64(parsed.data.spendingLimitPerTx)],
     });
-    const txBytes = await tx.build({ client: suiClient });
-    return res.status(200).json({
-      unsignedTransaction: Buffer.from(txBytes).toString("base64"),
-    });
-  },
-);
-
-agentCapsRouter.patch(
-  "/vaults/:vaultId/coin-limits/:coinType",
-  async (req, res) => {
-    const parsed = VaultCoinLimitsUpdate.safeParse(req.body);
-    if (!parsed.success)
-      throw new ApiError(
-        "invalid_request",
-        "Invalid request body",
-        z.treeifyError(parsed.error),
-      );
-    await waitForAfterDigest(req.query.afterDigest);
-
-    const owner = (await fetchVault(req.params.vaultId)).owner;
-    const tx = new Transaction();
-    tx.setSender(owner);
-    if (parsed.data.spendingLimitPerTx !== undefined) {
-      tx.moveCall({
-        target: `${KOSHIRAE_PACKAGE_ID}::capability::update_vault_spending_limit_per_tx`,
-        typeArguments: [req.params.coinType],
-        arguments: [
-          tx.object(req.params.vaultId),
-          tx.pure.u64(parsed.data.spendingLimitPerTx),
-        ],
-      });
-    }
-    if (parsed.data.spendingLimitPeriod !== undefined) {
-      tx.moveCall({
-        target: `${KOSHIRAE_PACKAGE_ID}::capability::update_vault_spending_limit_period`,
-        typeArguments: [req.params.coinType],
-        arguments: [
-          tx.object(req.params.vaultId),
-          tx.pure.u64(parsed.data.spendingLimitPeriod),
-        ],
-      });
-    }
-    const txBytes = await tx.build({ client: suiClient });
-    return res.status(200).json({
-      unsignedTransaction: Buffer.from(txBytes).toString("base64"),
-    });
-  },
-);
-
-agentCapsRouter.delete(
-  "/vaults/:vaultId/coin-limits/:coinType",
-  async (req, res) => {
-    await waitForAfterDigest(req.query.afterDigest);
-
-    const owner = (await fetchVault(req.params.vaultId)).owner;
-    const tx = new Transaction();
-    tx.setSender(owner);
+  }
+  if (parsed.data.spendingLimitPeriod !== undefined) {
     tx.moveCall({
-      target: `${KOSHIRAE_PACKAGE_ID}::capability::remove_vault_coin_limits`,
+      target: `${KOSHIRAE_PACKAGE_ID}::capability::update_vault_spending_limit_period`,
       typeArguments: [req.params.coinType],
-      arguments: [tx.object(req.params.vaultId)],
+      arguments: [tx.object(req.params.vaultId), tx.pure.u64(parsed.data.spendingLimitPeriod)],
     });
-    const txBytes = await tx.build({ client: suiClient });
-    return res.status(200).json({
-      unsignedTransaction: Buffer.from(txBytes).toString("base64"),
-    });
-  },
-);
+  }
+  const txBytes = await tx.build({ client: suiClient });
+  return res.status(200).json({
+    unsignedTransaction: Buffer.from(txBytes).toString("base64"),
+  });
+});
+
+agentCapsRouter.delete("/vaults/:vaultId/coin-limits/:coinType", async (req, res) => {
+  await waitForAfterDigest(req.query.afterDigest);
+
+  const owner = (await fetchVault(req.params.vaultId)).owner;
+  const tx = new Transaction();
+  tx.setSender(owner);
+  tx.moveCall({
+    target: `${KOSHIRAE_PACKAGE_ID}::capability::remove_vault_coin_limits`,
+    typeArguments: [req.params.coinType],
+    arguments: [tx.object(req.params.vaultId)],
+  });
+  const txBytes = await tx.build({ client: suiClient });
+  return res.status(200).json({
+    unsignedTransaction: Buffer.from(txBytes).toString("base64"),
+  });
+});
 
 agentCapsRouter.patch("/vaults/:vaultId", async (req, res) => {
-  const parsed = z
-    .object({ periodLengthMs: z.number().int().positive() })
-    .safeParse(req.body);
+  const parsed = z.object({ periodLengthMs: z.number().int().positive() }).safeParse(req.body);
   if (!parsed.success)
-    throw new ApiError(
-      "invalid_request",
-      "Invalid request body",
-      z.treeifyError(parsed.error),
-    );
+    throw new ApiError("invalid_request", "Invalid request body", z.treeifyError(parsed.error));
   await waitForAfterDigest(req.query.afterDigest);
 
   const owner = (await fetchVault(req.params.vaultId)).owner;
@@ -352,13 +276,8 @@ agentCapsRouter.patch("/vaults/:vaultId", async (req, res) => {
   tx.setSender(owner);
   tx.moveCall({
     target: `${KOSHIRAE_PACKAGE_ID}::capability::update_vault_period_length_ms`,
-    arguments: [
-      tx.object(req.params.vaultId),
-      tx.pure.u64(parsed.data.periodLengthMs),
-    ],
+    arguments: [tx.object(req.params.vaultId), tx.pure.u64(parsed.data.periodLengthMs)],
   });
   const txBytes = await tx.build({ client: suiClient });
-  return res
-    .status(200)
-    .json({ unsignedTransaction: Buffer.from(txBytes).toString("base64") });
+  return res.status(200).json({ unsignedTransaction: Buffer.from(txBytes).toString("base64") });
 });

@@ -3,15 +3,10 @@
 /// already built, so resubmitting those exact bytes fails identically.
 /// Only re-requesting a fresh build (against, by then, hopefully
 /// caught-up state) can actually recover.
-export async function withVersionRaceRetry<
-  T extends { unsignedTransaction: string },
->(
+export async function withVersionRaceRetry<T extends { unsignedTransaction: string }>(
   requestFreshTx: () => Promise<T>,
   signAndSubmitFn: (base64Tx: string) => Promise<string>,
-  {
-    maxAttempts = 4,
-    baseDelayMs = 500,
-  }: { maxAttempts?: number; baseDelayMs?: number } = {},
+  { maxAttempts = 4, baseDelayMs = 500 }: { maxAttempts?: number; baseDelayMs?: number } = {},
 ): Promise<string> {
   let lastError: unknown;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -21,9 +16,7 @@ export async function withVersionRaceRetry<
     } catch (err) {
       lastError = err;
       if (!isRetriableVersionRace(err) || attempt === maxAttempts) throw err;
-      await new Promise((resolve) =>
-        setTimeout(resolve, baseDelayMs * 2 ** (attempt - 1)),
-      );
+      await new Promise((resolve) => setTimeout(resolve, baseDelayMs * 2 ** (attempt - 1)));
     }
   }
   throw lastError;

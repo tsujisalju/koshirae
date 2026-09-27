@@ -42,9 +42,7 @@ export const ERROR_STATUS = {
 } as const;
 
 export type ErrorCode = keyof typeof ERROR_STATUS;
-export const ErrorCode = z.enum(
-  Object.keys(ERROR_STATUS) as [ErrorCode, ...ErrorCode[]],
-);
+export const ErrorCode = z.enum(Object.keys(ERROR_STATUS) as [ErrorCode, ...ErrorCode[]]);
 
 export const ErrorResponse = z.object({
   error: z.object({

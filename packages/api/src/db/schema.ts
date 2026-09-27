@@ -1,11 +1,4 @@
-import {
-  integer,
-  jsonb,
-  pgTable,
-  text,
-  timestamp,
-  uniqueIndex,
-} from "drizzle-orm/pg-core";
+import { integer, jsonb, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import type { SubmitIntentRequest } from "@koshirae/core";
 
 export const intents = pgTable(
@@ -18,15 +11,10 @@ export const intents = pgTable(
     request: jsonb("request").$type<SubmitIntentRequest>().notNull(),
     riskScore: integer("risk_score"),
     txDigest: text("tx_digest"),
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     pendingActionId: text("pending_action_id"),
   },
   (table) => [
-    uniqueIndex("intents_agent_cap_idempotency_idx").on(
-      table.agentCapId,
-      table.idempotencyKey,
-    ),
+    uniqueIndex("intents_agent_cap_idempotency_idx").on(table.agentCapId, table.idempotencyKey),
   ],
 );

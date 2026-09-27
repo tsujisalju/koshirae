@@ -26,10 +26,7 @@ export async function signAndSubmit(
   });
   if (result.FailedTransaction) {
     const { digest, status } = result.FailedTransaction;
-    throw new TransactionFailedError(
-      digest,
-      status.error?.message ?? "unknown execution error",
-    );
+    throw new TransactionFailedError(digest, status.error?.message ?? "unknown execution error");
   }
   const digest = result.Transaction?.digest;
   if (!digest) throw new Error("signAndExecuteTransaction returned no digest");
