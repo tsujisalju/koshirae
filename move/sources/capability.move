@@ -126,6 +126,11 @@ public struct CapCreated has copy, drop {
     owner: address,
 }
 
+public struct VaultCreated has copy, drop {
+    vault_id: ID,
+    owner: address,
+}
+
 public struct OperatorCapMinted has copy, drop {
     operator_cap_id: ID,
     agent_cap_id: ID,
@@ -241,6 +246,7 @@ public fun new_vault(period_length_ms: u64, ctx: &mut TxContext): Vault {
 }
 
 public fun share_vault(vault: Vault) {
+    event::emit(VaultCreated { vault_id: object::id(&vault), owner: vault.owner });
     transfer::share_object(vault);
 }
 
@@ -329,6 +335,11 @@ public fun update_vault_period_length_ms(vault: &mut Vault, period_length_ms: u6
 #[test_only]
 public fun pending_risk_for_testing<T>(pending: &PendingAction<T>): (u8, u8, u8) {
     (pending.onchain_floor, pending.reported_risk, pending.risk_score)
+}
+
+#[test_only]
+public fun vault_created_for_testing(event: &VaultCreated): (ID, address) {
+    (event.vault_id, event.owner)
 }
 
 #[test_only]

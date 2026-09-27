@@ -1,34 +1,41 @@
-const MOVE_ABORT_MAP: Record<number, { status: number; error: string }> = {
-    0: { status: 409, error: "agent_cap_inactive" },
-    1: { status: 409, error: "agent_cap_expired" },
-    2: { status: 403, error: "action_not_allowed" },
-    3: { status: 403, error: "target_not_allowed" },
-    4: { status: 403, error: "over_tx_limit" },
-    5: { status: 403, error: "over_period_limit" },
-    6: { status: 403, error: "not_owner" },
-    7: { status: 409, error: "wrong_vault" },
-    8: { status: 409, error: "wrong_cap" },
-    9: { status: 400, error: "cannot_remove_protocol_target" },
-    10: { status: 403, error: "coin_type_not_allowed" },
-    11: { status: 400, error: "coin_type_not_in_vault" },
-    12: { status: 409, error: "coin_type_already_allowed" },
-    13: { status: 403, error: "wrong_agent_cap" },
-    14: { status: 403, error: "stale_operator_generation" },
-    15: { status: 403, error: "over_vault_tx_limit" },
-    16: { status: 403, error: "over_vault_period_limit" },
-    17: { status: 409, error: "stale_nonce" },
-    18: { status: 409, error: "pending_action_expired" },
-    19: { status: 409, error: "not_expired_yet" },
-    20: { status: 409, error: "migration_required" },
-    21: { status: 409, error: "already_migrated" },
+import { ErrorCode } from "@koshirae/core";
+
+const CAPABILITY_ABORTS: Record<number, ErrorCode> = {
+  0: "agent_cap_inactive",
+  1: "agent_cap_expired",
+  2: "action_not_allowed",
+  3: "target_not_allowed",
+  4: "over_tx_limit",
+  5: "over_period_limit",
+  6: "not_owner",
+  7: "wrong_vault",
+  8: "pending_action_wrong_agent_cap",
+  9: "cannot_remove_protocol_target",
+  10: "coin_type_not_allowed",
+  11: "coin_type_not_in_vault",
+  12: "coin_type_already_allowed",
+  13: "operator_cap_wrong_agent_cap",
+  14: "operator_cap_revoked",
+  15: "over_vault_tx_limit",
+  16: "over_vault_period_limit",
+  17: "stale_nonce",
+  18: "pending_action_expired",
+  19: "pending_action_not_expired",
+  20: "migration_required",
+  21: "already_migrated",
 };
 
-export function moveAbortResponse(
-    err: unknown,
-): { status: number; body: { error: string } } | null {
-    const match = /MoveAbort[^]*abort code: (\d+)/.exec(String(err));
-    if (!match) return null;
-    const mapped = MOVE_ABORT_MAP[Number(match[1])];
-    if (!mapped) return null;
-    return { status: mapped.status, body: { error: mapped.error } };
+// Verified against @mysten/sui's formatMoveAbortMessage (src/client/utils.ts),
+// the single formatter shared by the gRPC, GraphQL, and JSON-RPC transports
+// and by tx.build()'s own dry-run gas resolution. It renders as:
+//   MoveAbort[ in <N>(st|nd|rd|th) command], abort code: <code>, in '<pkg>::<module>[::<fn>]' (instruction <n>)
+// Caveat: this only holds for plain numeric abort codes. If capability.move
+// ever adopts "Clever Error" named constants (#[error] attribute), the abort
+// code is rendered as '<CONSTANT_NAME>' instead of "abort code: <n>" and this
+// function will return null for those aborts.
+export function capabilityAbortCode(err: unknown): ErrorCode | null {
+  const text = String(err);
+  if (!/MoveAbort/.test(text) || !/::capability::/.test(text)) return null;
+  const match = /abort code: (\d+)/.exec(text);
+  return match ? (CAPABILITY_ABORTS[Number(match[1])] ?? null) : null;
 }

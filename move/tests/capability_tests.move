@@ -1,7 +1,7 @@
 #[test_only]
 module koshirae::capability_tests;
 
-use koshirae::capability::{Self, Vault, AgentCap, AdminCap, PendingAction};
+use koshirae::capability::{Self, Vault, AgentCap, AdminCap, PendingAction, VaultCreated};
 use koshirae::operator_cap::OperatorCap;
 use koshirae::mock_dex::{Self, MockPool};
 use koshirae::mock_usdc::MOCK_USDC;
@@ -9,6 +9,7 @@ use sui::test_scenario as ts;
 use sui::coin::{Self, Coin};
 use sui::sui::SUI;
 use sui::clock;
+use sui::event;
 use std::unit_test::{assert_eq, destroy};
 use sui_system::sui_system::SuiSystemState;
 use sui_system::staking_pool::StakedSui;
@@ -902,6 +903,29 @@ fun agent_can_round_trip_sui_to_usdc_and_back() {
     ts::return_shared(pool);
     destroy(op_cap);
     clock.destroy_for_testing();
+    scenario.end();
+}
+
+/// share_vault emits exactly one VaultCreated event, carrying the vault's
+/// own ID and owner — the event a backend indexer relies on to learn a new
+/// vault exists without polling for it.
+#[test]
+fun share_vault_emits_single_vault_created_event() {
+    let mut scenario = ts::begin(OWNER);
+
+    let vault_id = {
+        let vault = capability::new_vault(PERIOD_LENGTH_MS, scenario.ctx());
+        let id = object::id(&vault);
+        capability::share_vault(vault);
+        id
+    };
+
+    let events = event::events_by_type<VaultCreated>();
+    assert_eq!(events.length(), 1);
+    let (event_vault_id, event_owner) = capability::vault_created_for_testing(&events[0]);
+    assert_eq!(event_vault_id, vault_id);
+    assert_eq!(event_owner, OWNER);
+
     scenario.end();
 }
 

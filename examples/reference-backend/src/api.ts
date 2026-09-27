@@ -1,17 +1,19 @@
-import type {
-    AgentCapPolicyInput,
-    VaultInput,
-    CoinLimitsInput,
-    SubmitIntentRequest,
-    Intent,
-    AgentCap,
+import {
+    ErrorResponse,
+    type AgentCap,
+    type AgentCapPolicyInput,
+    type CoinLimitsInput,
+    type ErrorCode,
+    type Intent,
+    type SubmitIntentRequest,
+    type VaultInput,
 } from "@koshirae/core";
 import { API_BASE_URL } from "./client";
 
 export class ApiError extends Error {
     constructor(
         readonly status: number,
-        readonly errorCode: string | undefined,
+        readonly code: ErrorCode | undefined,
         message: string,
     ) {
         super(message);
@@ -26,15 +28,19 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
     });
     if (!res.ok) {
         const body = await res.text();
-        let errorCode: string | undefined;
+        let code: ErrorCode | undefined;
+        let message = body;
         try {
-            const parsed = JSON.parse(body);
-            if (typeof parsed?.error === "string") errorCode = parsed.error;
+            const parsed = ErrorResponse.safeParse(JSON.parse(body));
+            if (parsed.success) {
+                code = parsed.data.error.code;
+                message = parsed.data.error.message;
+            }
         } catch {}
         throw new ApiError(
             res.status,
-            errorCode,
-            `${init?.method ?? "GET"} ${path} -> ${res.status}: ${body}`,
+            code,
+            `${init?.method ?? "GET"} ${path} -> ${res.status}: ${message}`,
         );
     }
     return res.json() as Promise<T>;

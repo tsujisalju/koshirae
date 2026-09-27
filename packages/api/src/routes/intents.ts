@@ -10,7 +10,6 @@ import { db } from "../db/client";
 import {
     fetchAgentCap,
     fetchOperatorCap,
-    fetchOperatorCapOwner,
     findCreatedObjectId,
 } from "../chain/reads";
 import { reportedRisk } from "../risk/evaluate";
@@ -23,6 +22,7 @@ import { buildApprovalTransaction } from "../ptb/build-approval";
 import { resolveIntentCoinType } from "../intent-coin-type";
 import { Transaction } from "@mysten/sui/transactions";
 import { waitForAfterDigest } from "../chain/wait";
+import { ApiError } from "../errors";
 
 export const intentsRouter = Router();
 
@@ -63,7 +63,9 @@ async function buildAndSignIntentTxBytes(params: {
         reportedRisk: reportedRisk({ agentCap, request }),
         nonce,
     });
-    tx.setSender(await fetchOperatorCapOwner(request.operatorCapId));
+    const { cap: _operatorCap, owner: operatorAddress } =
+        await fetchOperatorCap(request.operatorCapId);
+    tx.setSender(operatorAddress);
     return tx.build({ client: suiClient });
 }
 
@@ -117,10 +119,11 @@ intentsRouter.post("/agent-caps/:agentCapId/intents", async (req, res) => {
     const { agentCapId } = req.params;
     const parsed = SubmitIntentRequest.safeParse(req.body);
     if (!parsed.success) {
-        return res.status(400).json({
-            error: "invalid_request",
-            details: z.treeifyError(parsed.error),
-        });
+        throw new ApiError(
+            "invalid_request",
+            "Invalid intent request",
+            z.treeifyError(parsed.error),
+        );
     }
     await waitForAfterDigest(req.query.afterDigest);
 
@@ -158,20 +161,26 @@ intentsRouter.post("/agent-caps/:agentCapId/intents", async (req, res) => {
         fetchAgentCap(agentCapId),
         fetchOperatorCap(request.operatorCapId),
     ]);
-    if (operatorCap.agentCapId !== agentCapId)
-        return res.status(403).json({ error: "wrong_agent_cap" });
-    if (operatorCap.generation !== agentCap.generation)
-        return res.status(403).json({ error: "stale_operator_cap" });
+    if (operatorCap.cap.agentCapId !== agentCapId)
+        throw new ApiError(
+            "operator_cap_wrong_agent_cap",
+            "Operator cap does not belong to this agent cap",
+        );
+    if (operatorCap.cap.generation !== agentCap.generation)
+        throw new ApiError(
+            "operator_cap_revoked",
+            "Operator cap generation is stale",
+        );
     if (!agentCap.active)
-        return res.status(403).json({ error: "inactive_agent_cap" });
+        throw new ApiError("agent_cap_inactive", "Agent cap is inactive");
     if (!agentCap.allowedActions.includes(request.actionType))
-        return res.status(403).json({ error: "action_not_allowed" });
+        throw new ApiError("action_not_allowed", "Action type not allowed");
     if (!agentCap.allowedTargets.includes(request.target))
-        return res.status(403).json({ error: "target_not_allowed" });
+        throw new ApiError("target_not_allowed", "Target not allowed");
 
     const coinType = resolveIntentCoinType(request);
     if (!agentCap.limits[coinType])
-        return res.status(403).json({ error: "coin_type_not_allowed" });
+        throw new ApiError("coin_type_not_allowed", "Coin type not allowed");
 
     const txBytes = await buildAndSignIntentTxBytes({
         agentCap,
@@ -209,21 +218,21 @@ intentsRouter.get("/intents/:id", async (req, res) => {
     const row = await db.query.intents.findFirst({
         where: { id: req.params.id },
     });
-    if (!row) return res.status(404).json({ error: "intent_not_found" });
+    if (!row) throw new ApiError("not_found", "Intent not found");
     return res.status(200).json(rowToIntent(row));
 });
 
 intentsRouter.post("/intents/:id/submitted", async (req, res) => {
     const { txDigest } = req.body ?? {};
     if (typeof txDigest !== "string")
-        return res.status(400).json({ error: "txDigest required" });
+        throw new ApiError("invalid_request", "txDigest required");
 
     const row = await db.query.intents.findFirst({
         where: {
             id: req.params.id,
         },
     });
-    if (!row) return res.status(404).json({ error: "intent_not_found" });
+    if (!row) throw new ApiError("not_found", "Intent not found");
 
     const result = await suiClient.waitForTransaction({ digest: txDigest });
     const transaction = result.Transaction ?? result.FailedTransaction;
@@ -262,11 +271,17 @@ intentsRouter.post("/intents/:id/approve", async (req, res) => {
             id: req.params.id,
         },
     });
-    if (!row) return res.status(404).json({ error: "intent_not_found" });
+    if (!row) throw new ApiError("not_found", "Intent not found");
     if (row.status !== "pending_approval")
-        return res.status(409).json({ error: "intent_not_pending_approval" });
+        throw new ApiError(
+            "intent_not_pending_approval",
+            "Intent is not pending approval",
+        );
     if (!row.pendingActionId)
-        return res.status(400).json({ error: "pending_action_id_not_found" });
+        throw new ApiError(
+            "pending_action_not_recorded",
+            "Pending action has not been recorded yet",
+        );
 
     const intent = rowToIntent(row);
     const agentCap = await fetchAgentCap(intent.agentCapId);
@@ -293,13 +308,17 @@ intentsRouter.post("/intents/:id/reject", async (req, res) => {
             id: req.params.id,
         },
     });
-    if (!row) return res.status(404).json({ error: "intent_not_found" });
+    if (!row) throw new ApiError("not_found", "Intent not found");
     if (row.status !== "pending_approval")
-        return res.status(409).json({ error: "intent_not_pending_approval" });
+        throw new ApiError(
+            "intent_not_pending_approval",
+            "Intent is not pending approval",
+        );
     if (!row.pendingActionId)
-        return res
-            .status(409)
-            .json({ error: "pending_action_not_yet_recorded" });
+        throw new ApiError(
+            "pending_action_not_recorded",
+            "Pending action has not been recorded yet",
+        );
 
     const intent = rowToIntent(row);
     const pendingActionId = row.pendingActionId;

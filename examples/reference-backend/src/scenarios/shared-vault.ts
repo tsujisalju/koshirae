@@ -189,7 +189,7 @@ export async function runSharedVaultScenario() {
     } catch (err) {
         if (
             err instanceof ApiError &&
-            err.errorCode === "over_vault_period_limit"
+            err.code === "over_vault_period_limit"
         )
             console.log(
                 `Expected failure, vault-level ceiling correctly blocked Agent B: ${err.message}`,

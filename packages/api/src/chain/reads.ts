@@ -5,10 +5,18 @@ import {
     CoinLimitsState,
     normalizeCoinType,
     OperatorCap,
+    SuiObjectID,
     Vault,
 } from "@koshirae/core";
 import { bcs } from "@mysten/sui/bcs";
-import { suiClient } from "./client";
+import {
+    CETUS_ORIGINAL_PACKAGE_ID,
+    KOSHIRAE_ORIGINAL_PACKAGE_ID,
+    suiClient,
+} from "./client";
+import { normalizeStructTag } from "@mysten/sui/utils";
+import { ObjectError } from "@mysten/sui/client";
+import { ApiError } from "../errors";
 
 const ACTION_CODE_TO_TYPE = Object.fromEntries(
     Object.entries(ACTION_TYPE_CODE).map(([type, code]) => [
@@ -107,11 +115,45 @@ function parseAllowedActions(codes: number[]): ActionType[] {
     });
 }
 
+const koshiraeType = (module: string, name: string) =>
+    normalizeStructTag(`${KOSHIRAE_ORIGINAL_PACKAGE_ID}::${module}::${name}`);
+
+const AGENT_CAP_TYPE = koshiraeType("capability", "AgentCap");
+const VAULT_TYPE = koshiraeType("capability", "Vault");
+const OPERATOR_CAP_TYPE = koshiraeType("operator_cap", "OperatorCap");
+
+async function getObjectOrNotFound(objectId: string, label: string) {
+    try {
+        const { object } = await suiClient.getObject({
+            objectId,
+            include: { content: true },
+        });
+        return object;
+    } catch (err) {
+        if (err instanceof ObjectError && err.reason !== "unknown") {
+            throw new ApiError("not_found", `${label} ${objectId} not found`);
+        }
+        throw err;
+    }
+}
+
+async function getTypedObject(
+    objectId: string,
+    expectedType: string,
+    label: string,
+) {
+    const object = await getObjectOrNotFound(objectId, label);
+    if (object.type !== expectedType) {
+        throw new ApiError(
+            "not_found",
+            `${objectId} is not a Koshirae ${label}`,
+        );
+    }
+    return object;
+}
+
 export async function fetchAgentCap(id: string): Promise<AgentCap> {
-    const { object } = await suiClient.getObject({
-        objectId: id,
-        include: { content: true },
-    });
+    const object = await getTypedObject(id, AGENT_CAP_TYPE, "AgentCap");
     const f = AgentCapBcs.parse(object.content);
     return AgentCap.parse({
         id,
@@ -132,24 +174,30 @@ export async function fetchAgentCap(id: string): Promise<AgentCap> {
     });
 }
 
-export async function fetchOperatorCap(id: string): Promise<OperatorCap> {
-    const { object } = await suiClient.getObject({
-        objectId: id,
-        include: { content: true },
-    });
+export async function fetchOperatorCap(
+    id: string,
+): Promise<{ cap: OperatorCap; owner: string }> {
+    const object = await getTypedObject(id, OPERATOR_CAP_TYPE, "OperatorCap");
+    const owner = object.owner.AddressOwner;
+    if (!owner) {
+        throw new ApiError(
+            "invalid_request",
+            `OperatorCap ${id} is not held by an address`,
+        );
+    }
     const f = OperatorCapBcs.parse(object.content);
-    return OperatorCap.parse({
-        id,
-        agentCapId: f.agentCapId,
-        generation: Number(f.generation),
-    });
+    return {
+        cap: OperatorCap.parse({
+            id,
+            agentCapId: f.agentCapId,
+            generation: Number(f.generation),
+        }),
+        owner,
+    };
 }
 
 export async function fetchVault(id: string): Promise<Vault> {
-    const { object } = await suiClient.getObject({
-        objectId: id,
-        include: { content: true },
-    });
+    const object = await getTypedObject(id, VAULT_TYPE, "Vault");
     const f = VaultBcs.parse(object.content);
     return Vault.parse({
         id,
@@ -158,14 +206,6 @@ export async function fetchVault(id: string): Promise<Vault> {
         periodLengthMs: Number(f.periodLengthMs),
         limits: parseCoinLimitMap(f.limits),
     });
-}
-
-export async function fetchOperatorCapOwner(id: string): Promise<string> {
-    const { object } = await suiClient.getObject({ objectId: id });
-    if (object.owner.AddressOwner) {
-        return object.owner.AddressOwner;
-    }
-    throw new Error(`OperatorCap ${id} is not address-owned`);
 }
 
 export async function findCreatedObjectId(
@@ -186,15 +226,32 @@ export async function findCreatedObjectId(
     return created?.objectId;
 }
 
-export async function fetchPoolCoinTypes(
-    poolId: string,
-): Promise<{ coinTypeA: string; coinTypeB: string }> {
-    const obj = await suiClient.core.getObject({ objectId: poolId });
-    const match = /Pool<(.+),\s*(.+)>$/.exec(obj.object.type ?? "");
+export async function fetchPoolCoinTypes(poolId: string) {
+    const object = await getObjectOrNotFound(poolId, "Cetus pool");
+    const prefix =
+        normalizeStructTag(
+            `${CETUS_ORIGINAL_PACKAGE_ID}::pool::Pool<`.replace("<", ""),
+        ) + "<";
+    const match = object.type?.startsWith(prefix)
+        ? /Pool<(.+),\s*(.+)>$/.exec(object.type)
+        : null;
     if (!match)
-        throw new Error(`Could not parse pool coin types from ${poolId}`);
+        throw new ApiError(
+            "invalid_request",
+            `Target ${poolId} is not a Cetus pool`,
+        );
     return {
         coinTypeA: normalizeCoinType(match[1].trim()),
         coinTypeB: normalizeCoinType(match[2].trim()),
     };
+}
+
+export function objectIdParam(value: string, name: string): string {
+    const parsed = SuiObjectID.safeParse(value);
+    if (!parsed.success)
+        throw new ApiError(
+            "invalid_request",
+            `${name} is not a valid object ID`,
+        );
+    return parsed.data;
 }
