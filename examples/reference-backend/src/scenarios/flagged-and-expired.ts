@@ -52,7 +52,7 @@ export async function runFlaggedAndExpiredScenario() {
     } catch (err) {
         if (
             !(err instanceof ApiError) ||
-            err.errorCode !== "pending_action_expired"
+            err.code !== "pending_action_expired"
         )
             throw err;
         console.log(
