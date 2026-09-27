@@ -25,7 +25,14 @@ const CAPABILITY_ABORTS: Record<number, ErrorCode> = {
   21: "already_migrated",
 };
 
-// TODO: verify the exact abort message format the gRPC client produces for the match
+// Verified against @mysten/sui's formatMoveAbortMessage (src/client/utils.ts),
+// the single formatter shared by the gRPC, GraphQL, and JSON-RPC transports
+// and by tx.build()'s own dry-run gas resolution. It renders as:
+//   MoveAbort[ in <N>(st|nd|rd|th) command], abort code: <code>, in '<pkg>::<module>[::<fn>]' (instruction <n>)
+// Caveat: this only holds for plain numeric abort codes. If capability.move
+// ever adopts "Clever Error" named constants (#[error] attribute), the abort
+// code is rendered as '<CONSTANT_NAME>' instead of "abort code: <n>" and this
+// function will return null for those aborts.
 export function capabilityAbortCode(err: unknown): ErrorCode | null {
   const text = String(err);
   if (!/MoveAbort/.test(text) || !/::capability::/.test(text)) return null;
