@@ -338,6 +338,11 @@ public fun pending_risk_for_testing<T>(pending: &PendingAction<T>): (u8, u8, u8)
 }
 
 #[test_only]
+public fun vault_created_for_testing(event: &VaultCreated): (ID, address) {
+    (event.vault_id, event.owner)
+}
+
+#[test_only]
 public fun balance_for_testing<T>(vault: &Vault): u64 {
     let key = type_name::with_defining_ids<T>();
     if (bag::contains(&vault.balances, key)) {
