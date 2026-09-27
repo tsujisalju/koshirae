@@ -10,7 +10,6 @@ import { db } from "../db/client";
 import {
     fetchAgentCap,
     fetchOperatorCap,
-    fetchOperatorCapOwner,
     findCreatedObjectId,
 } from "../chain/reads";
 import { reportedRisk } from "../risk/evaluate";
@@ -64,7 +63,9 @@ async function buildAndSignIntentTxBytes(params: {
         reportedRisk: reportedRisk({ agentCap, request }),
         nonce,
     });
-    tx.setSender(await fetchOperatorCapOwner(request.operatorCapId));
+    const { cap: _operatorCap, owner: operatorAddress } =
+        await fetchOperatorCap(request.operatorCapId);
+    tx.setSender(operatorAddress);
     return tx.build({ client: suiClient });
 }
 
@@ -160,12 +161,12 @@ intentsRouter.post("/agent-caps/:agentCapId/intents", async (req, res) => {
         fetchAgentCap(agentCapId),
         fetchOperatorCap(request.operatorCapId),
     ]);
-    if (operatorCap.agentCapId !== agentCapId)
+    if (operatorCap.cap.agentCapId !== agentCapId)
         throw new ApiError(
             "operator_cap_wrong_agent_cap",
             "Operator cap does not belong to this agent cap",
         );
-    if (operatorCap.generation !== agentCap.generation)
+    if (operatorCap.cap.generation !== agentCap.generation)
         throw new ApiError(
             "operator_cap_revoked",
             "Operator cap generation is stale",

@@ -1,11 +1,15 @@
 import { SUI_TYPE_ARG } from "@mysten/sui/utils";
 import { reportSubmitted, submitIntent } from "../api";
-import { KOSHIRAE_PACKAGE_ID, operatorKeypair, suiClient } from "../client";
+import {
+    KOSHIRAE_ORIGINAL_PACKAGE_ID,
+    operatorKeypair,
+    suiClient,
+} from "../client";
 import { setupAgentCap } from "./setup";
 import { randomUUID } from "crypto";
 import { signAndSubmit } from "@koshirae/sdk";
 
-const MOCK_USDC_TYPE = `${KOSHIRAE_PACKAGE_ID}::mock_usdc::MOCK_USDC`;
+const MOCK_USDC_TYPE = `${KOSHIRAE_ORIGINAL_PACKAGE_ID}::mock_usdc::MOCK_USDC`;
 const MOCK_POOL_ID = process.env.MOCK_POOL_ID!;
 const DEFAULT_LIMITS = {
     spendingLimitPerTx: "1000000000",

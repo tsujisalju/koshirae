@@ -9,7 +9,7 @@ import {
 import { Router } from "express";
 import { z } from "zod";
 import { KOSHIRAE_PACKAGE_ID, suiClient } from "../chain/client";
-import { fetchAgentCap, fetchVault } from "../chain/reads";
+import { fetchAgentCap, fetchVault, objectIdParam } from "../chain/reads";
 import { waitForAfterDigest } from "../chain/wait";
 import { ApiError } from "../errors";
 
@@ -235,11 +235,8 @@ agentCapsRouter.delete(
 );
 
 agentCapsRouter.get("/agent-caps/:agentCapId", async (req, res) => {
-  try {
-    return res.status(200).json(await fetchAgentCap(req.params.agentCapId));
-  } catch {
-    throw new ApiError("not_found", "Agent cap not found");
-  }
+  const agentCapId = objectIdParam(req.params.agentCapId, "agentCapId");
+  return res.status(200).json(await fetchAgentCap(agentCapId));
 });
 
 const VaultCoinLimitsUpdate = CoinLimitsInput.partial();
