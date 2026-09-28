@@ -55,5 +55,5 @@ deps = { MoveStdlib = "MoveStdlib_1" }
 [pinned.testnet.koshirae]
 source = { root = true }
 use_environment = "testnet"
-manifest_digest = "EC71B52CB1627A2195521D75DD30013BE43B52547033B03FA8758E62807331E7"
-deps = { CetusClmm = "CetusClmm", Sui = "Sui_1", SuiSystem = "SuiSystem", std = "MoveStdlib_1" }
+manifest_digest = "CA7CD26682DE4124DDD273580D7D0976492524F6381A756E92BFF61C875750D5"
+deps = { cetus_clmm = "CetusClmm", std = "MoveStdlib", sui = "Sui", sui_system = "SuiSystem" }
