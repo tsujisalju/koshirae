@@ -1,51 +1,76 @@
-import { AgentCap, Intent, normalizeCoinType, SubmitIntentRequest } from "@koshirae/core";
-import { randomUUID } from "crypto";
-import { Router } from "express";
-import { db } from "../db/client";
-import { fetchAgentCap, fetchOperatorCap, findCreatedObjectId } from "../chain/reads";
-import { reportedRisk } from "../risk/evaluate";
-import { buildIntentTransaction } from "../ptb/build-intent";
-import { KOSHIRAE_PACKAGE_ID, suiClient } from "../chain/client";
-import { intents } from "../db/schema";
-import { eq } from "drizzle-orm";
-import { z } from "zod";
-import { buildApprovalTransaction } from "../ptb/build-approval";
-import { resolveIntentCoinType } from "../intent-coin-type";
+import {
+  type AgentCap,
+  BuildOptions,
+  type Intent,
+  type IntentWithTransaction,
+  normalizeCoinType,
+  type PredictedOutcome,
+  SubmitIntentRequest,
+  SubmittedRequest,
+  type UnsignedTransaction,
+} from "@koshirae/core";
 import { Transaction } from "@mysten/sui/transactions";
+import { randomUUID } from "crypto";
+import { eq } from "drizzle-orm";
+import { Router } from "express";
+import { z } from "zod";
+import { KOSHIRAE_PACKAGE_ID, suiClient } from "../chain/client";
+import { classifyEvents } from "../chain/events";
+import { capabilityAbortCode } from "../chain/move-error";
+import { fetchAgentCap, fetchOperatorCap } from "../chain/reads";
 import { waitForAfterDigest } from "../chain/wait";
+import { db } from "../db/client";
+import { intents } from "../db/schema";
 import { ApiError } from "../errors";
+import { resolveIntentCoinType } from "../intent-coin-type";
+import { buildForIssue, type BuiltTransaction, recordIssued, toUnsigned } from "../intents/issue";
+import { reconcileUnreportedSubmits, settleIssued } from "../intents/settle";
+import {
+  allocateNonce,
+  findIntentRow,
+  loadIntent,
+  rowToIntent,
+  uniqueViolation,
+} from "../intents/store";
+import { buildApprovalTransaction } from "../ptb/build-approval";
+import { buildIntentTransaction } from "../ptb/build-intent";
+import { reportedRisk } from "../risk/evaluate";
 
 export const intentsRouter = Router();
 
-function nextStatus(currentStatus: string, succeeded: boolean): string {
-  if (!succeeded) {
-    return currentStatus === "approved" || currentStatus === "denied"
-      ? "pending_approval"
-      : "failed";
+/* ---------- helpers ---------- */
+
+function normalizeIntentRequest(request: SubmitIntentRequest): SubmitIntentRequest {
+  switch (request.actionType) {
+    case "stake":
+      return request;
+    case "cetusSwap":
+      return { ...request, coinTypeIn: normalizeCoinType(request.coinTypeIn) };
+    default: // transfer, mockSwap
+      return { ...request, coinType: normalizeCoinType(request.coinType) };
   }
-  if (currentStatus === "ready" || currentStatus === "approved") return "executed";
-  return currentStatus;
 }
 
-function rowToIntent(row: typeof intents.$inferSelect): Intent {
-  return {
-    id: row.id,
-    agentCapId: row.agentCapId,
-    status: row.status as Intent["status"],
-    request: SubmitIntentRequest.parse(row.request),
-    riskScore: row.riskScore ?? undefined,
-    txDigest: row.txDigest ?? undefined,
-    createdAt: row.createdAt.getTime(),
-    pendingActionId: row.pendingActionId ?? undefined,
-  };
+// buildOptions travels alongside the request in the body. SubmitIntentRequest
+// strips unknown keys, so it never ends up stored with the intent.
+function parseBuildOptions(body: unknown): BuildOptions {
+  const raw = (body as { buildOptions?: unknown } | undefined)?.buildOptions;
+  if (raw === undefined) return {};
+  const parsed = BuildOptions.safeParse(raw);
+  if (!parsed.success) {
+    throw new ApiError("invalid_request", "Invalid buildOptions", z.treeifyError(parsed.error));
+  }
+  return parsed.data;
 }
 
-async function buildAndSignIntentTxBytes(params: {
+async function buildSubmitTransaction(params: {
   agentCap: AgentCap;
   request: SubmitIntentRequest;
   nonce: number;
-}): Promise<Uint8Array> {
-  const { agentCap, request, nonce } = params;
+  operatorAddress: string;
+  buildOptions: BuildOptions;
+}): Promise<BuiltTransaction> {
+  const { agentCap, request, nonce, operatorAddress, buildOptions } = params;
   const tx = await buildIntentTransaction({
     agentCapId: agentCap.id,
     vaultId: agentCap.vaultId,
@@ -53,52 +78,83 @@ async function buildAndSignIntentTxBytes(params: {
     reportedRisk: reportedRisk({ agentCap, request }),
     nonce,
   });
-  const { cap: _operatorCap, owner: operatorAddress } = await fetchOperatorCap(
-    request.operatorCapId,
-  );
   tx.setSender(operatorAddress);
-  return tx.build({ client: suiClient });
+  return buildForIssue(tx, buildOptions);
 }
 
-// Whether the intent executes or gets flagged is decided on-chain, so read it
-// from a simulation of the built tx instead of re-implementing the risk floor.
-// `tx.build` has already surfaced any Move abort by the time this runs.
-async function simulateIntentOutcome(
-  txBytes: Uint8Array,
-): Promise<{ status: "ready" | "pending_approval"; riskScore: number }> {
+// Whether the intent executes or gets flagged is decided on-chain; simulate
+// the exact bytes we're about to hand out and read our own events. tx.build
+// has already surfaced any Move abort by the time this runs.
+async function predictOutcome(
+  bytes: Uint8Array,
+  agentCapId: string,
+): Promise<{ predictedOutcome: PredictedOutcome; riskScore: number }> {
   const result = await suiClient.core.simulateTransaction({
-    transaction: txBytes,
+    transaction: bytes,
     include: { events: true },
   });
   const tx = result.Transaction ?? result.FailedTransaction;
   if (!tx.status.success) throw new Error(tx.status.error?.message ?? "simulation failed");
-  for (const event of tx.events) {
-    const flagged = event.eventType.endsWith("::capability::ActionFlagged");
-    const executed = event.eventType.endsWith("::capability::ActionExecuted");
-    if (!flagged && !executed) continue;
-    const riskScore = Number(event.json?.risk_score);
-    if (!Number.isInteger(riskScore)) throw new Error("simulated action event has no risk_score");
-    return { status: flagged ? "pending_approval" : "ready", riskScore };
-  }
-  throw new Error("simulation emitted no ActionExecuted/ActionFlagged event");
+  const outcome = classifyEvents(tx.events ?? [], agentCapId);
+  if (outcome.kind === "executed")
+    return { predictedOutcome: "execute", riskScore: outcome.riskScore };
+  if (outcome.kind === "flagged") return { predictedOutcome: "flag", riskScore: outcome.riskScore };
+  throw new Error("simulation emitted no ActionExecuted/ActionFlagged event for this cap");
 }
 
-function normalizeIntentRequest(request: SubmitIntentRequest): SubmitIntentRequest {
-  switch (request.actionType) {
-    case "stake":
-      return request;
-    case "cetusSwap":
-      return {
-        ...request,
-        coinTypeIn: normalizeCoinType(request.coinTypeIn),
-      };
-    default: //transfer, mockSwap
-      return {
-        ...request,
-        coinType: normalizeCoinType(request.coinType),
-      };
-  }
+function withTransaction(intent: Intent, unsigned: UnsignedTransaction): IntentWithTransaction {
+  return { ...intent, ...unsigned };
 }
+
+const submitStatusCode = (predicted: PredictedOutcome) => (predicted === "flag" ? 202 : 200);
+
+/* ---------- replay of an existing idempotency key ---------- */
+
+async function replayIntent(
+  existingId: string,
+  operatorAddress: string,
+  buildOptions: BuildOptions,
+): Promise<{ code: number; body: Intent | IntentWithTransaction }> {
+  const before = await loadIntent(existingId);
+  if (before.status === "ready") await reconcileUnreportedSubmits(existingId);
+
+  const intent = await loadIntent(existingId);
+  if (intent.status !== "ready") return { code: 200, body: intent };
+
+  // Still unsettled: rebuild against current object versions, but with the
+  // nonce pinned at creation, so every build of this intent shares one nonce
+  // and the chain lets at most one of them execute.
+  const agentCap = await fetchAgentCap(intent.agentCapId);
+  let built: BuiltTransaction;
+  try {
+    built = await buildSubmitTransaction({
+      agentCap,
+      request: intent.request,
+      nonce: intent.nonce,
+      operatorAddress,
+      buildOptions,
+    });
+  } catch (err) {
+    // The pinned nonce was consumed by a different intent; this one can
+    // never land now. Mark it so it stops showing up as ready.
+    if (capabilityAbortCode(err) === "stale_nonce") {
+      await db.update(intents).set({ status: "failed" }).where(eq(intents.id, intent.id));
+    }
+    throw err;
+  }
+  await recordIssued(db, {
+    digest: built.digest,
+    intentId: intent.id,
+    agentCapId: intent.agentCapId,
+    kind: "submit",
+  });
+  return {
+    code: submitStatusCode(intent.predictedOutcome),
+    body: withTransaction(intent, toUnsigned(built)),
+  };
+}
+
+/* ---------- routes ---------- */
 
 intentsRouter.post("/agent-caps/:agentCapId/intents", async (req, res) => {
   const { agentCapId } = req.params;
@@ -106,192 +162,174 @@ intentsRouter.post("/agent-caps/:agentCapId/intents", async (req, res) => {
   if (!parsed.success) {
     throw new ApiError("invalid_request", "Invalid intent request", z.treeifyError(parsed.error));
   }
+  const buildOptions = parseBuildOptions(req.body);
   await waitForAfterDigest(req.query.afterDigest);
-
   const request = normalizeIntentRequest(parsed.data);
 
-  const existing = await db.query.intents.findFirst({
-    where: {
-      agentCapId,
-      idempotencyKey: request.idempotencyKey,
-    },
-  });
-  if (existing) {
-    const intent = rowToIntent(existing);
-    // Object versions the first build referenced may be stale by now (this
-    // is also how a caller's version-race retry gets here), so a not-yet-
-    // submitted intent needs a fresh build rather than reusing old bytes —
-    // there are none stored anyway, buildIntentTransaction needs current
-    // chain state regardless.
-    if (intent.status !== "ready" && intent.status !== "pending_approval")
-      return res.status(200).json(intent);
-
-    const agentCap = await fetchAgentCap(agentCapId);
-    const txBytes = await buildAndSignIntentTxBytes({
-      agentCap,
-      request: intent.request,
-      nonce: agentCap.lastNonce + 1,
-    });
-    return res.status(200).json({
-      ...intent,
-      unsignedTransaction: Buffer.from(txBytes).toString("base64"),
-    });
-  }
-
-  const [agentCap, operatorCap] = await Promise.all([
+  const [agentCap, operator] = await Promise.all([
     fetchAgentCap(agentCapId),
     fetchOperatorCap(request.operatorCapId),
   ]);
-  if (operatorCap.cap.agentCapId !== agentCapId)
+
+  const existing = await db.query.intents.findFirst({
+    where: { agentCapId, idempotencyKey: request.idempotencyKey },
+  });
+  if (existing) {
+    const { code, body } = await replayIntent(existing.id, operator.owner, buildOptions);
+    return res.status(code).json(body);
+  }
+
+  // Pre-flight checks: same conditions execute_action enforces on-chain,
+  // checked here first for a clear error instead of a dry-run abort.
+  if (operator.cap.agentCapId !== agentCap.id)
     throw new ApiError(
       "operator_cap_wrong_agent_cap",
       "Operator cap does not belong to this agent cap",
     );
-  if (operatorCap.cap.generation !== agentCap.generation)
+  if (operator.cap.generation !== agentCap.generation)
     throw new ApiError("operator_cap_revoked", "Operator cap generation is stale");
   if (!agentCap.active) throw new ApiError("agent_cap_inactive", "Agent cap is inactive");
   if (!agentCap.allowedActions.includes(request.actionType))
     throw new ApiError("action_not_allowed", "Action type not allowed");
   if (!agentCap.allowedTargets.includes(request.target))
     throw new ApiError("target_not_allowed", "Target not allowed");
-
-  const coinType = resolveIntentCoinType(request);
-  if (!agentCap.limits[coinType])
+  if (!agentCap.limits[resolveIntentCoinType(request)])
     throw new ApiError("coin_type_not_allowed", "Coin type not allowed");
 
-  const txBytes = await buildAndSignIntentTxBytes({
+  const nonce = await allocateNonce(agentCap);
+  const built = await buildSubmitTransaction({
     agentCap,
     request,
-    nonce: agentCap.lastNonce + 1,
+    nonce,
+    operatorAddress: operator.owner,
+    buildOptions,
   });
-  const { status, riskScore } = await simulateIntentOutcome(txBytes);
+  const { predictedOutcome, riskScore } = await predictOutcome(built.bytes, agentCap.id);
 
   const id = randomUUID();
-  await db.insert(intents).values({
-    id,
-    agentCapId,
-    idempotencyKey: request.idempotencyKey,
-    status,
-    request,
-    riskScore,
-    createdAt: new Date(),
-  });
+  try {
+    await db.transaction(async (trx) => {
+      await trx.insert(intents).values({
+        id,
+        agentCapId,
+        idempotencyKey: request.idempotencyKey,
+        status: "ready",
+        predictedOutcome,
+        request,
+        nonce,
+        riskScore,
+      });
+      await recordIssued(trx, {
+        digest: built.digest,
+        intentId: id,
+        agentCapId,
+        kind: "submit",
+      });
+    });
+  } catch (err) {
+    const constraint = uniqueViolation(err);
+    // A concurrent request with the same idempotency key won the insert:
+    // answer as a replay of that one.
+    if (constraint === "intents_agent_cap_idempotency_idx") {
+      const winner = await db.query.intents.findFirst({
+        where: { agentCapId, idempotencyKey: request.idempotencyKey },
+      });
+      if (winner) {
+        const { code, body } = await replayIntent(winner.id, operator.owner, buildOptions);
+        return res.status(code).json(body);
+      }
+    }
+    // A concurrent intent for this cap took the same nonce. Retrying the
+    // request allocates a fresh one.
+    if (constraint === "intents_agent_cap_nonce_idx") {
+      throw new ApiError(
+        "stale_nonce",
+        "Nonce was taken by a concurrent intent; retry the request",
+      );
+    }
+    throw err;
+  }
 
-  const record: Intent = {
-    id,
-    agentCapId,
-    status,
-    request,
-    riskScore,
-    createdAt: Date.now(),
-  };
-  return res.status(status === "ready" ? 200 : 202).json({
-    ...record,
-    unsignedTransaction: Buffer.from(txBytes).toString("base64"),
-  });
+  const intent = await loadIntent(id);
+  return res
+    .status(submitStatusCode(predictedOutcome))
+    .json(withTransaction(intent, toUnsigned(built)));
 });
 
 intentsRouter.get("/intents/:id", async (req, res) => {
-  const row = await db.query.intents.findFirst({
-    where: { id: req.params.id },
-  });
-  if (!row) throw new ApiError("not_found", "Intent not found");
-  return res.status(200).json(rowToIntent(row));
+  return res.status(200).json(await loadIntent(req.params.id));
 });
 
 intentsRouter.post("/intents/:id/submitted", async (req, res) => {
-  const { txDigest } = req.body ?? {};
-  if (typeof txDigest !== "string") throw new ApiError("invalid_request", "txDigest required");
-
-  const row = await db.query.intents.findFirst({
-    where: {
-      id: req.params.id,
-    },
-  });
-  if (!row) throw new ApiError("not_found", "Intent not found");
-
-  const result = await suiClient.waitForTransaction({ digest: txDigest });
-  const transaction = result.Transaction ?? result.FailedTransaction;
-  const succeeded = transaction.status.success;
-
-  let pendingActionId: string | undefined;
-  if (succeeded && row.status === "pending_approval") {
-    const coinType = resolveIntentCoinType(row.request);
-    pendingActionId = await findCreatedObjectId(
-      txDigest,
-      `::capability::PendingAction<${coinType}>`,
-    );
+  const parsed = SubmittedRequest.safeParse(req.body);
+  if (!parsed.success) {
+    throw new ApiError("invalid_request", "txDigest required", z.treeifyError(parsed.error));
   }
-
-  const newStatus = nextStatus(row.status, succeeded);
-
-  await db
-    .update(intents)
-    .set({
-      status: newStatus,
-      txDigest,
-      ...(pendingActionId ? { pendingActionId } : {}),
-    })
-    .where(eq(intents.id, req.params.id));
-  return res.json({
-    id: row.id,
-    status: newStatus,
-    txDigest,
-    pendingActionId,
+  const issued = await db.query.intentTransactions.findFirst({
+    where: { digest: parsed.data.txDigest },
   });
+  // Only digests the API built for this intent are accepted, so a reporter
+  // can't move an intent with an unrelated transaction.
+  if (!issued || issued.intentId !== req.params.id) {
+    throw new ApiError("digest_not_issued", "This digest was not issued for this intent");
+  }
+  await settleIssued(issued);
+  return res.status(200).json(await loadIntent(req.params.id));
 });
 
 intentsRouter.post("/intents/:id/approve", async (req, res) => {
-  const row = await db.query.intents.findFirst({
-    where: {
-      id: req.params.id,
-    },
-  });
-  if (!row) throw new ApiError("not_found", "Intent not found");
-  if (row.status !== "pending_approval")
-    throw new ApiError("intent_not_pending_approval", "Intent is not pending approval");
-  if (!row.pendingActionId)
-    throw new ApiError("pending_action_not_recorded", "Pending action has not been recorded yet");
-
+  const buildOptions = parseBuildOptions(req.body);
+  const row = await findIntentRow(req.params.id);
+  if (!row) throw new ApiError("not_found", `Intent ${req.params.id} not found`);
   const intent = rowToIntent(row);
-  const agentCap = await fetchAgentCap(intent.agentCapId);
+  if (intent.status === "expired")
+    throw new ApiError("pending_action_expired", "Pending action has expired");
+  if (intent.status !== "pending_approval")
+    throw new ApiError("intent_not_pending_approval", "Intent is not pending approval");
 
+  const agentCap = await fetchAgentCap(intent.agentCapId);
   const tx = await buildApprovalTransaction({
     intent,
     agentCapId: intent.agentCapId,
     vaultId: agentCap.vaultId,
   });
   tx.setSender(agentCap.owner);
-  const txBytes = await tx.build({ client: suiClient });
-  await db.update(intents).set({ status: "approved" }).where(eq(intents.id, req.params.id));
-  return res.status(200).json({ unsignedTransaction: Buffer.from(txBytes).toString("base64") });
+  const built = await buildForIssue(tx, buildOptions);
+  await recordIssued(db, {
+    digest: built.digest,
+    intentId: intent.id,
+    agentCapId: intent.agentCapId,
+    kind: "approve",
+  });
+  return res.status(200).json(toUnsigned(built));
 });
 
 intentsRouter.post("/intents/:id/reject", async (req, res) => {
-  const row = await db.query.intents.findFirst({
-    where: {
-      id: req.params.id,
-    },
-  });
-  if (!row) throw new ApiError("not_found", "Intent not found");
-  if (row.status !== "pending_approval")
-    throw new ApiError("intent_not_pending_approval", "Intent is not pending approval");
-  if (!row.pendingActionId)
-    throw new ApiError("pending_action_not_recorded", "Pending action has not been recorded yet");
-
+  const buildOptions = parseBuildOptions(req.body);
+  const row = await findIntentRow(req.params.id);
+  if (!row) throw new ApiError("not_found", `Intent ${req.params.id} not found`);
   const intent = rowToIntent(row);
-  const pendingActionId = row.pendingActionId;
-  const coinType = resolveIntentCoinType(intent.request);
+  // reject_pending doesn't check expiry, so rejecting an expired action is
+  // allowed and is how an owner cleans one up.
+  if (intent.status !== "pending_approval" && intent.status !== "expired")
+    throw new ApiError("intent_not_pending_approval", "Intent is not pending approval");
+  if (!intent.pendingActionId)
+    throw new Error(`Intent ${intent.id} is flagged without a PendingAction id`);
 
   const agentCap = await fetchAgentCap(intent.agentCapId);
   const tx = new Transaction();
   tx.setSender(agentCap.owner);
   tx.moveCall({
     target: `${KOSHIRAE_PACKAGE_ID}::capability::reject_pending`,
-    typeArguments: [coinType],
-    arguments: [tx.object(pendingActionId), tx.object(intent.agentCapId)],
+    typeArguments: [resolveIntentCoinType(intent.request)],
+    arguments: [tx.object(intent.pendingActionId), tx.object(intent.agentCapId)],
   });
-  const txBytes = await tx.build({ client: suiClient });
-  await db.update(intents).set({ status: "denied" }).where(eq(intents.id, req.params.id));
-  return res.status(200).json({ unsignedTransaction: Buffer.from(txBytes).toString("base64") });
+  const built = await buildForIssue(tx, buildOptions);
+  await recordIssued(db, {
+    digest: built.digest,
+    intentId: intent.id,
+    agentCapId: intent.agentCapId,
+    kind: "reject",
+  });
+  return res.status(200).json(toUnsigned(built));
 });

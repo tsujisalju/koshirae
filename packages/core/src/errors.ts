@@ -10,6 +10,7 @@ export const ERROR_STATUS = {
   // request and lookup
   invalid_request: 400,
   not_found: 404,
+  transaction_not_found: 404, // issued by the API, but not (yet) visible on-chain
   internal_error: 500,
 
   // policy denials
@@ -23,6 +24,7 @@ export const ERROR_STATUS = {
   over_vault_period_limit: 403,
   operator_cap_revoked: 403, // stale_operator_cap
   operator_cap_wrong_agent_cap: 403,
+  digest_not_issued: 403, // reported digest wasn't built by the API for this intent
 
   // state conflicts
   agent_cap_inactive: 409,
@@ -34,7 +36,6 @@ export const ERROR_STATUS = {
   cannot_remove_protocol_target: 409,
   stale_nonce: 409,
   intent_not_pending_approval: 409,
-  pending_action_not_recorded: 409,
   pending_action_expired: 409,
   pending_action_not_expired: 409,
   migration_required: 409,

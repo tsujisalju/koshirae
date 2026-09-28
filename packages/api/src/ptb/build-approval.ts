@@ -49,6 +49,8 @@ export async function buildApprovalTransaction({
       const inIsA = request.coinTypeIn === coinTypeA;
       tx.moveCall({
         target: `${KOSHIRAE_PACKAGE_ID}::capability::${inIsA ? "approve_and_finish_cetus_swap_a_to_b" : "approve_and_finish_cetus_swap_b_to_a"}`,
+        // Generic over the pool's pair, same as execute_cetus_swap_*.
+        typeArguments: [coinTypeA, coinTypeB],
         arguments: [
           pendingArg,
           tx.object(agentCapId),
