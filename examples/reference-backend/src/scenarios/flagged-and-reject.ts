@@ -1,9 +1,10 @@
 import { SUI_TYPE_ARG } from "@mysten/sui/utils";
-import { rejectIntent, reportSubmitted, submitIntent } from "../api";
-import { operatorKeypair, ownerKeypair, suiClient } from "../client";
-import { setupAgentCap } from "./setup";
 import { randomUUID } from "crypto";
 import { signAndSubmit } from "@koshirae/sdk";
+import { rejectIntent, reportSubmitted, submitIntent } from "../api";
+import { operatorKeypair, ownerKeypair, suiClient } from "../client";
+import { expectPrediction, expectStatus } from "./assert";
+import { setupAgentCap } from "./setup";
 
 export async function runFlaggedAndRejectScenario() {
   const recipient = operatorKeypair.toSuiAddress();
@@ -22,13 +23,16 @@ export async function runFlaggedAndRejectScenario() {
     },
     lastDigest,
   );
-  console.log(`Intent ${intent.id} status: ${intent.status}`); // expect pending_approval
+  expectPrediction(intent, "flag", "submit");
 
   const submitDigest = await signAndSubmit(intent.unsignedTransaction, operatorKeypair, suiClient);
-  await reportSubmitted(intent.id, submitDigest);
+  expectStatus(
+    await reportSubmitted(intent.id, submitDigest),
+    "pending_approval",
+    "flagged on-chain",
+  );
 
-  const rejected = await rejectIntent(intent.id, submitDigest);
-  const rejectDigest = await signAndSubmit(rejected.unsignedTransaction, ownerKeypair, suiClient);
-  await reportSubmitted(intent.id, rejectDigest);
-  console.log(`Rejected: ${rejectDigest}`);
+  const rejection = await rejectIntent(intent.id);
+  const rejectDigest = await signAndSubmit(rejection.unsignedTransaction, ownerKeypair, suiClient);
+  expectStatus(await reportSubmitted(intent.id, rejectDigest), "denied", "rejected");
 }

@@ -2,10 +2,13 @@ import {
   ErrorResponse,
   type AgentCap,
   type AgentCapPolicyInput,
+  type BuildOptions,
   type CoinLimitsInput,
   type ErrorCode,
   type Intent,
+  type IntentWithTransaction,
   type SubmitIntentRequest,
+  type UnsignedTransaction,
   type VaultInput,
 } from "@koshirae/core";
 import { API_BASE_URL } from "./client";
@@ -104,25 +107,28 @@ export const submitIntent = (
   agentCapId: string,
   request: SubmitIntentRequest,
   afterDigest?: string,
+  buildOptions?: BuildOptions,
 ) =>
-  apiFetch<Intent & { unsignedTransaction: string }>(
-    withAfter(`/agent-caps/${agentCapId}/intents`, afterDigest),
-    { method: "POST", body: JSON.stringify(request) },
-  );
-
-export const approveIntent = (intentId: string, afterDigest?: string) =>
-  apiFetch<{ unsignedTransaction: string }>(
-    withAfter(`/intents/${intentId}/approve`, afterDigest),
-    { method: "POST" },
-  );
-
-export const rejectIntent = (intentId: string, afterDigest?: string) =>
-  apiFetch<{ unsignedTransaction: string }>(withAfter(`/intents/${intentId}/reject`, afterDigest), {
+  apiFetch<IntentWithTransaction>(withAfter(`/agent-caps/${agentCapId}/intents`, afterDigest), {
     method: "POST",
+    body: JSON.stringify({ ...request, buildOptions }),
   });
 
-export const reportSubmitted = (intentId: string, txDigest: string, afterDigest?: string) =>
-  apiFetch<{ status: string }>(withAfter(`/intents/${intentId}/submitted`, afterDigest), {
+export const approveIntent = (intentId: string, buildOptions?: BuildOptions) =>
+  apiFetch<UnsignedTransaction>(`/intents/${intentId}/approve`, {
+    method: "POST",
+    body: JSON.stringify({ buildOptions }),
+  });
+
+export const rejectIntent = (intentId: string, buildOptions?: BuildOptions) =>
+  apiFetch<UnsignedTransaction>(`/intents/${intentId}/reject`, {
+    method: "POST",
+    body: JSON.stringify({ buildOptions }),
+  });
+
+// Returns the intent as it stands after the reported transaction settled.
+export const reportSubmitted = (intentId: string, txDigest: string) =>
+  apiFetch<Intent>(`/intents/${intentId}/submitted`, {
     method: "POST",
     body: JSON.stringify({ txDigest }),
   });

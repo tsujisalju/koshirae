@@ -1,4 +1,6 @@
 import { runCetusSwapScenario } from "./scenarios/cetus-swap";
+import { runCetusSwapFlaggedApproveScenario } from "./scenarios/cetus-swap-flagged-approve";
+import { runConcurrentIdempotencyScenario } from "./scenarios/concurrent-idempotency";
 import { runFlaggedAndApproveScenario } from "./scenarios/flagged-and-approve";
 import { runFlaggedAndExpiredScenario } from "./scenarios/flagged-and-expired";
 import { runFlaggedAndRejectScenario } from "./scenarios/flagged-and-reject";
@@ -8,10 +10,14 @@ import { runSharedVaultScenario } from "./scenarios/shared-vault";
 import { runStakeScenario } from "./scenarios/stake";
 import { runFailedOnChainScenario } from "./scenarios/failed-onchain";
 import { runTransferScenario } from "./scenarios/transfer";
+import { runLostReportScenario } from "./scenarios/lost-report";
+import { runForeignDigestScenario } from "./scenarios/foreign-digest";
 
 const scenarios: Record<string, () => Promise<void>> = {
   transfer: runTransferScenario,
   "cetus-swap": runCetusSwapScenario,
+  "cetus-swap-flagged-approve": runCetusSwapFlaggedApproveScenario,
+  "concurrent-idempotency": runConcurrentIdempotencyScenario,
   "flagged-and-approve": runFlaggedAndApproveScenario,
   "flagged-and-expired": runFlaggedAndExpiredScenario,
   "flagged-and-reject": runFlaggedAndRejectScenario,
@@ -20,6 +26,8 @@ const scenarios: Record<string, () => Promise<void>> = {
   "shared-vault": runSharedVaultScenario,
   stake: runStakeScenario,
   "failed-onchain": runFailedOnChainScenario,
+  "lost-report": runLostReportScenario,
+  "foreign-digest": runForeignDigestScenario,
 };
 
 const name = process.argv[2];

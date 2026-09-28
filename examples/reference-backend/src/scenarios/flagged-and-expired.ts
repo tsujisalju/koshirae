@@ -1,9 +1,10 @@
 import { SUI_TYPE_ARG } from "@mysten/sui/utils";
-import { ApiError, approveIntent, reportSubmitted, submitIntent } from "../api";
-import { operatorKeypair, ownerKeypair, suiClient } from "../client";
-import { setupAgentCap } from "./setup";
 import { randomUUID } from "crypto";
 import { signAndSubmit } from "@koshirae/sdk";
+import { ApiError, approveIntent, getIntent, reportSubmitted, submitIntent } from "../api";
+import { operatorKeypair, suiClient } from "../client";
+import { expectPrediction, expectStatus } from "./assert";
+import { setupAgentCap } from "./setup";
 
 export async function runFlaggedAndExpiredScenario() {
   const recipient = operatorKeypair.toSuiAddress();
@@ -19,23 +20,30 @@ export async function runFlaggedAndExpiredScenario() {
       operatorCapId,
       idempotencyKey: randomUUID(),
       agentReportedRisk: 255,
-      requestedPendingWindowMs: 5_000, // inside 1 hr ceiling, deliberately short
+      requestedPendingWindowMs: 5_000, // inside the 1 hr ceiling, deliberately short
     },
     lastDigest,
   );
+  expectPrediction(intent, "flag", "submit");
 
   const submitDigest = await signAndSubmit(intent.unsignedTransaction, operatorKeypair, suiClient);
-  await reportSubmitted(intent.id, submitDigest);
+  const flagged = await reportSubmitted(intent.id, submitDigest);
+  expectStatus(flagged, "pending_approval", "flagged on-chain");
+  if (!flagged.expiresAt) throw new Error("Flagged intent has no expiresAt");
 
-  console.log("Waiting 6s for the pending window to lapse...");
-  await new Promise((r) => setTimeout(r, 6_000));
+  const waitMs = Math.max(0, flagged.expiresAt - Date.now()) + 1_000;
+  console.log(`Waiting ${waitMs}ms for the pending window to lapse...`);
+  await new Promise((r) => setTimeout(r, waitMs));
 
+  // Derived on read; nothing on-chain changed.
+  expectStatus(await getIntent(intent.id), "expired", "after window");
+
+  // The API refuses before building, so this never reaches a dry-run.
   try {
-    const approved = await approveIntent(intent.id, submitDigest);
-    await signAndSubmit(approved.unsignedTransaction, ownerKeypair, suiClient);
-    console.error("UNEXPECTED: approval succeeded past expiry");
+    await approveIntent(intent.id);
+    throw new Error("UNEXPECTED: approval was built past expiry");
   } catch (err) {
     if (!(err instanceof ApiError) || err.code !== "pending_action_expired") throw err;
-    console.log(`Expected failure - correctly rejected past expiry: ${(err as Error).message}`);
+    console.log(`Expected refusal: ${err.message}`);
   }
 }
