@@ -5,8 +5,13 @@ if (!SUI_RPC_URL) {
   throw new Error("SUI_RPC_URL is not set");
 }
 
+const SUI_NETWORK = process.env.SUI_NETWORK ?? "testnet";
+if (!SUI_NETWORK) {
+  throw new Error("SUI_NETWORK is not set");
+}
+
 export const suiClient = new SuiGrpcClient({
-  network: "testnet",
+  network: SUI_NETWORK,
   baseUrl: SUI_RPC_URL,
 });
 

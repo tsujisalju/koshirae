@@ -4,13 +4,16 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "run": "tsx --env-file=.env src/run.ts"
+    "run": "tsx --env-file=.env src/run.ts",
+    "run:localnet": "tsx --env-file=.env.localnet src/run.ts",
+    "provision:localnet": "tsx --env-file=.env.localnet src/provision/bootstrap-localnet.ts"
   },
   "dependencies": {
     "@cetusprotocol/common-sdk": "^1.4.2",
     "@koshirae/core": "workspace:*",
     "@koshirae/sdk": "workspace:*",
-    "@mysten/sui": "^2.29.0"
+    "@mysten/sui": "^2.29.0",
+    "smol-toml": "^1.9.0"
   },
   "devDependencies": {
     "@types/node": "^26.5.0",

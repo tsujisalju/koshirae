@@ -4,7 +4,7 @@ import { setupAgentCap } from "./setup";
 import { signAndSubmit } from "@koshirae/sdk";
 import { operatorKeypair, suiClient } from "../client";
 
-const VALIDATOR_ADDRESS = process.env.TESTNET_VALIDATOR_ADDRESS!;
+const VALIDATOR_ADDRESS = process.env.VALIDATOR_ADDRESS!;
 
 export async function runStakeScenario() {
   // A 1 SUI stake equals the per-tx limit (risk 180), so the validator is a
