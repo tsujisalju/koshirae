@@ -36,6 +36,7 @@ move/Pub.*.toml
 .env
 .env*
 !.env.example
+!.env.*.example
 
 # misc
 .DS_Store
