@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "dev:localnet": "NOTENV_CONFIG_PATH=.env.localnet tsx watch src/server.ts",
+    "dev:localnet": "DOTENV_CONFIG_PATH=.env.localnet tsx watch src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
     "db:generate": "drizzle-kit generate",
