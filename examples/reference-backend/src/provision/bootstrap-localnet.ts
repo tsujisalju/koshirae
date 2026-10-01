@@ -1,3 +1,11 @@
+// One-time setup after `sui client test-publish` on a fresh localnet.
+// Reads package ids from Pub.localnet.toml, finds the objects our init
+// functions and Cetus's gave the publisher, initializes Cetus's pool factory,
+// picks a local validator for staking, and prints the .env.localnet block.
+//
+// Must run with OWNER_PRIVATE_KEY set to the address that ran test-publish:
+// Cetus's admin roles and our TreasuryCap<MOCK_USDC> go to the publisher.
+
 import { readFileSync } from "fs";
 import { parse } from "smol-toml";
 import { operatorKeypair, ownerKeypair, suiClient } from "../client";
@@ -18,7 +26,7 @@ interface PublishedEntry {
 function readPubfile() {
   const doc = parse(readFileSync(PUBFILE_PATH, "utf8")) as { published?: PublishedEntry[] };
   const entries = doc.published ?? [];
-  const koshirae = entries.find((e) => e!.source.local.includes("/.move/git/"));
+  const koshirae = entries.find((e) => !e.source.local.includes("/.move/git/"));
   const cetus = entries.find((e) => e.source.local.endsWith("/packages/cetus_clmm"));
   if (!koshirae || !cetus)
     throw new Error(`Could not find koshirae and cetus_clmm in ${PUBFILE_PATH}`);
@@ -51,7 +59,16 @@ async function findCetusSharedObjects(publishDigest: string, cetusOriginalId: st
   });
   const tx = result.Transaction ?? result.FailedTransaction;
   const created = (tx.effects?.changedObjects ?? []).filter((c) => c.idOperation === "Created");
-  const typeOf = (id: string) => normalizeStructTag(tx.objectTypes?.[id] ?? "0x0::none::None");
+  // Packages created by the same publish (e.g. Cetus's own package object)
+  // report objectTypes[id] as the literal string "package", not a struct
+  // tag, which normalizeStructTag rejects. Skip those rather than crash.
+  const typeOf = (id: string) => {
+    try {
+      return normalizeStructTag(tx.objectTypes?.[id] ?? "0x0::none::None");
+    } catch {
+      return null;
+    }
+  };
   const find = (type: string) =>
     created.find((c) => typeOf(c.objectId) === normalizeStructTag(type))?.objectId;
 
@@ -105,7 +122,7 @@ async function initCetusFactory(cetusPackageId: string, globalConfigId: string, 
 
 async function firstActiveValidator(): Promise<string> {
   const { response } = await suiClient.ledgerService.getEpoch({
-    readMask: { paths: ["system_state.validators.active_validator.address"] },
+    readMask: { paths: ["system_state.validators.active_validators.address"] },
   });
   const address = response.epoch?.systemState?.validators?.activeValidators[0]?.address;
   if (!address) throw new Error("No active validators found in the current epoch");
@@ -127,13 +144,13 @@ async function main() {
   );
   const cetusAdminCap = await findOwnedObjectId(owner, `${cetus.originalId}::config::AdminCap`);
   if (!cetusAdminCap.previousTransaction)
-    throw new Error("Cetus AsminCap has no previous transaction");
+    throw new Error("Cetus AdminCap has no previous transaction");
   const { globalConfigId, poolsId } = await findCetusSharedObjects(
     cetusAdminCap.previousTransaction,
     cetus.originalId,
   );
 
-  console.error("Initializing Cetis factory...");
+  console.error("Initializing Cetus factory...");
   await initCetusFactory(cetus.packageId, globalConfigId, poolsId);
 
   const validator = await firstActiveValidator();
