@@ -115,7 +115,7 @@ async function initCetusFactory(cetusPackageId: string, globalConfigId: string, 
       console.error(`  ${label}: done`);
     } catch (err) {
       // Both abort if already done, which is expected on a re-run
-      console.error(` ${label}: skpped (${(err as Error).message.split("\n")[0]})`);
+      console.error(` ${label}: skipped (${(err as Error).message.split("\n")[0]})`);
     }
   }
 }

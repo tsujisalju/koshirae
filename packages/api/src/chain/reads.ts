@@ -18,6 +18,9 @@ const ACTION_CODE_TO_TYPE = Object.fromEntries(
   Object.entries(ACTION_TYPE_CODE).map(([type, code]) => [code, type as ActionType]),
 ) as Record<number, ActionType>;
 
+/* BCS Twins */
+// Translates raw on-chain bytes into object shapes
+
 // A single-field Move struct serializes identically to its inner field in BCS
 // (no length/tag framing), so UID/ID wrappers can be read as a plain address.
 const TypeNameBcs = bcs.struct("TypeName", { name: bcs.string() });

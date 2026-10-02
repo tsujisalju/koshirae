@@ -10,6 +10,7 @@ import { KOSHIRAE_PACKAGE_ID, operatorKeypair, ownerKeypair, suiClient } from ".
 import { extractCreatedObjectId } from "../extract-created-id";
 import { SUI_TYPE_ARG } from "@mysten/sui/utils";
 import { CoinLimitsInput } from "@koshirae/core";
+import { registerForTeardown } from "./teardown";
 
 interface ExtraCoinLimit {
   coinType: string;
@@ -58,6 +59,8 @@ export async function setupAgentCap(
   ]);
   if (!agentCapId || !vaultId)
     throw new Error(`Could not find created AgentCap/Vault (digest: ${createDigest})`);
+
+  registerForTeardown(vaultId, [SUI_TYPE_ARG, ...extraCoinLimits.map((e) => e.coinType)]);
 
   const mintDigest = await withVersionRaceRetry(
     () => mintOperatorCap(agentCapId, operatorKeypair.toSuiAddress(), createDigest),

@@ -11,7 +11,8 @@ sui client test-publish --build-env testnet --publish-unpublished-deps --pubfile
 
 # 3. Bootstrap, then the two pool scripts
 cd ../examples/reference-backend
-cp .env.localnet.example .env.localnet    # then fill in both private keys
+cp .env.localnet.example .env.localnet
+# then fill OWNER_PRIVATE_KEY and OPERATOR_PRIVATE_KEY
 pnpm provision:localnet >> .env.localnet
 pnpm tsx --env-file=.env.localnet src/provision/create-mock-pool.ts    # add MOCK_POOL_ID=… to .env.localnet
 pnpm tsx --env-file=.env.localnet src/provision/create-cetus-pool.ts   # add CETUS_POOL_ID=… to .env.localnet
