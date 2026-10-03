@@ -254,11 +254,11 @@ public fun share_vault(vault: Vault) {
 fun put_into_vault<T>(vault: &mut Vault, payment: Coin<T>) {
     assert_vault_version(vault);
     let key = type_name::with_defining_ids<T>();
-    if (bag::contains(&vault.balances, key)) {
-        let bal: &mut Balance<T> = bag::borrow_mut(&mut vault.balances, key);
+    if (vault.balances.contains(key)) {
+        let bal: &mut Balance<T> = vault.balances.borrow_mut(key);
         coin::put(bal, payment);
     } else {
-        bag::add(&mut vault.balances, key, coin::into_balance(payment));
+        vault.balances.add(key, payment.into_balance());
     }
 }
 
@@ -277,8 +277,8 @@ public fun withdraw<T>(vault: &mut Vault, amount: u64, ctx: &mut TxContext): Coi
     assert_vault_version(vault);
     assert!(vault.owner == ctx.sender(), ENotOwner);
     let key = type_name::with_defining_ids<T>();
-    assert!(bag::contains(&vault.balances, key), ECoinTypeNotInVault);
-    let bal: &mut Balance<T> = bag::borrow_mut(&mut vault.balances, key);
+    assert!(vault.balances.contains(key), ECoinTypeNotInVault);
+    let bal: &mut Balance<T> = vault.balances.borrow_mut(key);
     coin::take(bal, amount, ctx)
 }
 
@@ -345,8 +345,8 @@ public fun vault_created_for_testing(event: &VaultCreated): (ID, address) {
 #[test_only]
 public fun balance_for_testing<T>(vault: &Vault): u64 {
     let key = type_name::with_defining_ids<T>();
-    if (bag::contains(&vault.balances, key)) {
-        let bal: &Balance<T> = bag::borrow(&vault.balances, key);
+    if (vault.balances.contains(key)) {
+        let bal: &Balance<T> = vault.balances.borrow(key);
         bal.value()
     } else {
         0
@@ -396,15 +396,11 @@ public fun create_agent_cap_for_vault(
     let vault_id = object::id(vault);
 
     let mut targets = vec_set::from_keys(allowed_targets);
-    let mut i = 0;
-    let n = protocol_targets.length();
-    while (i < n) {
-        let addr = protocol_targets[i];
-        if (!targets.contains(&addr)) {
-            targets.insert(addr);
+    protocol_targets.do_ref!(|addr| {
+        if (!targets.contains(addr)) {
+            targets.insert(*addr);
         };
-        i = i + 1;
-    };
+    });
     let protocol_targets_set = vec_set::from_keys(protocol_targets);
 
     let cap = AgentCap {
@@ -693,8 +689,8 @@ public fun execute_action<T>(
             let vault_limits = vault.limits.get_mut(&coin_key);
             vault_limits.period_spent = vault_limits.period_spent + amount;
         };
-        assert!(bag::contains(&vault.balances, coin_key), ECoinTypeNotInVault);
-        let bal: &mut Balance<T> = bag::borrow_mut(&mut vault.balances, coin_key);
+        assert!(vault.balances.contains(coin_key), ECoinTypeNotInVault);
+        let bal: &mut Balance<T> = vault.balances.borrow_mut(coin_key);
         let out_coin = coin::take(bal, amount, ctx);
         event::emit(ActionExecuted { cap_id, action_type, target, amount, onchain_floor, reported_risk, risk_score: effective_risk });
         option::some(out_coin)
@@ -730,11 +726,7 @@ public fun execute_transfer<T>(
     ctx: &mut TxContext,
 ) {
     let maybe_coin = execute_action<T>(cap, op_cap, vault, ACTION_TRANSFER, recipient, amount, risk_score, nonce, requested_pending_window_ms, clock, ctx);
-    if (maybe_coin.is_some()) {
-        transfer::public_transfer(maybe_coin.destroy_some(), recipient);
-    } else {
-        maybe_coin.destroy_none();
-    }
+    maybe_coin.do!(|coin| transfer::public_transfer(coin, recipient));
 }
 
 public fun approve_pending_and_send<T>(
@@ -771,11 +763,7 @@ public fun execute_stake(
     ctx: &mut TxContext,
 ) {
     let maybe_coin = execute_action<SUI>(cap, op_cap, vault, ACTION_STAKE, validator, amount, risk_score, nonce, requested_pending_window_ms, clock, ctx);
-    if (maybe_coin.is_some()) {
-        finish_stake(maybe_coin.destroy_some(), system_state, validator, cap.owner, ctx);
-    } else {
-        maybe_coin.destroy_none();
-    }
+    maybe_coin.do!(|coin| finish_stake(coin, system_state, validator, cap.owner, ctx));
 }
 
 public fun approve_and_finish_stake(
@@ -814,11 +802,7 @@ public fun execute_mock_swap_sui_to_usdc(
     ctx: &mut TxContext,
 ) {
     let maybe_coin = execute_action<SUI>(cap, op_cap, vault, ACTION_MOCK_SWAP, pool_address, amount, risk_score, nonce, requested_pending_window_ms, clock, ctx);
-    if (maybe_coin.is_some()) {
-        finish_mock_swap_sui_to_usdc(maybe_coin.destroy_some(), vault, pool, ctx);
-    } else {
-        maybe_coin.destroy_none();
-    }
+    maybe_coin.do!(|coin| finish_mock_swap_sui_to_usdc(coin, vault, pool, ctx));
 }
 
 public fun execute_mock_swap_usdc_to_sui(
@@ -835,11 +819,7 @@ public fun execute_mock_swap_usdc_to_sui(
     ctx: &mut TxContext,
 ) {
     let maybe_coin = execute_action<MOCK_USDC>(cap, op_cap, vault, ACTION_MOCK_SWAP, pool_address, amount, risk_score, nonce, requested_pending_window_ms, clock, ctx);
-    if (maybe_coin.is_some()) {
-        finish_mock_swap_usdc_to_sui(maybe_coin.destroy_some(), vault, pool, ctx);
-    } else {
-        maybe_coin.destroy_none();
-    }
+    maybe_coin.do!(|coin| finish_mock_swap_usdc_to_sui(coin, vault, pool, ctx));
 }
 
 public fun approve_and_finish_mock_swap_sui_to_usdc(
@@ -917,11 +897,7 @@ public fun execute_cetus_swap_b_to_a<CoinTypeA, CoinTypeB>(
         cap, op_cap, vault, ACTION_CETUS_SWAP, pool_address, amount,
         risk_score, nonce, requested_pending_window_ms, clock, ctx,
     );
-    if (maybe_coin.is_some()) {
-        finish_cetus_swap_b_to_a<CoinTypeA, CoinTypeB>(maybe_coin.destroy_some(), vault, cetus_config, pool, clock, ctx);
-    } else {
-        maybe_coin.destroy_none();
-    };
+    maybe_coin.do!(|coin| finish_cetus_swap_b_to_a<CoinTypeA, CoinTypeB>(coin, vault, cetus_config, pool, clock, ctx));
 }
 
 public fun approve_and_finish_cetus_swap_b_to_a<CoinTypeA, CoinTypeB>(
@@ -956,11 +932,7 @@ public fun execute_cetus_swap_a_to_b<CoinTypeA, CoinTypeB>(
         cap, op_cap, vault, ACTION_CETUS_SWAP, pool_address, amount,
         risk_score, nonce, requested_pending_window_ms, clock, ctx,
     );
-    if (maybe_coin.is_some()) {
-        finish_cetus_swap_a_to_b<CoinTypeA, CoinTypeB>(maybe_coin.destroy_some(), vault, cetus_config, pool, clock, ctx);
-    } else {
-        maybe_coin.destroy_none();
-    };
+    maybe_coin.do!(|coin| finish_cetus_swap_a_to_b<CoinTypeA, CoinTypeB>(coin, vault, cetus_config, pool, clock, ctx));
 }
 
 public fun approve_and_finish_cetus_swap_a_to_b<CoinTypeA, CoinTypeB>(
@@ -993,7 +965,7 @@ public fun approve_pending<T>(
     assert!(clock.timestamp_ms() < pending.expiry_ms, EPendingExpired);
 
     let cap_id = object::id(cap);
-    let PendingAction { id, cap_id: _, vault_id: _, action_type, target, amount, onchain_floor, reported_risk, risk_score, created_at_ms: _, expiry_ms: _ } = pending;
+    let PendingAction { id, action_type, target, amount, onchain_floor, reported_risk, risk_score, .. } = pending;
 
     let coin_key = type_name::with_defining_ids<T>();
     // Owner may have removed this coin type limits since the action was
@@ -1008,14 +980,14 @@ public fun approve_pending<T>(
         let vault_limits = vault.limits.get_mut(&coin_key);
         vault_limits.period_spent = vault_limits.period_spent + amount;
     };
-    assert!(bag::contains(&vault.balances, coin_key), ECoinTypeNotInVault);
-    let bal: &mut Balance<T> = bag::borrow_mut(&mut vault.balances, coin_key);
+    assert!(vault.balances.contains(coin_key), ECoinTypeNotInVault);
+    let bal: &mut Balance<T> = vault.balances.borrow_mut(coin_key);
     let out_coin = coin::take(bal, amount, ctx);
 
-    event::emit(PendingApproved { pending_id: object::uid_to_inner(&id), cap_id });
+    event::emit(PendingApproved { pending_id: id.to_inner(), cap_id });
     event::emit(ActionExecuted { cap_id, action_type, target, amount, onchain_floor, reported_risk, risk_score });
 
-    object::delete(id);
+    id.delete();
     out_coin
 }
 
@@ -1026,13 +998,13 @@ public fun reject_pending<T>(pending: PendingAction<T>, cap: &AgentCap, ctx: &Tx
     assert!(pending.cap_id == object::id(cap), EWrongCap);
 
     let PendingAction { id, cap_id, .. } = pending;
-    event::emit(PendingRejected { pending_id: object::uid_to_inner(&id), cap_id });
-    object::delete(id);
+    event::emit(PendingRejected { pending_id: id.to_inner(), cap_id });
+    id.delete();
 }
 
 public fun reject_expired_pending<T>(pending: PendingAction<T>, clock: &Clock) {
     assert!(clock.timestamp_ms() >= pending.expiry_ms, ENotExpiredYet);
     let PendingAction { id, cap_id, .. } = pending;
-    event::emit(PendingRejected { pending_id: object::uid_to_inner(&id), cap_id });
-    object::delete(id);
+    event::emit(PendingRejected { pending_id: id.to_inner(), cap_id });
+    id.delete();
 }

@@ -3,6 +3,7 @@ import { reportSubmitted, submitIntent } from "../api";
 import { setupAgentCap } from "./setup";
 import { signAndSubmit } from "@koshirae/sdk";
 import { operatorKeypair, suiClient } from "../client";
+import { expectPrediction, expectStatus } from "./assert";
 
 const VALIDATOR_ADDRESS = process.env.TESTNET_VALIDATOR_ADDRESS!;
 
@@ -26,11 +27,8 @@ export async function runStakeScenario() {
     },
     lastDigest,
   );
-  if (intent.status !== "ready")
-    throw new Error(
-      `Expected intent status "ready", got "${intent.status}" (risk ${intent.riskScore})`,
-    );
+  // Every fresh intent is "ready"; what matters is that it won't be flagged.
+  expectPrediction(intent, "execute", "submit");
   const digest = await signAndSubmit(intent.unsignedTransaction, operatorKeypair, suiClient);
-  await reportSubmitted(intent.id, digest);
-  console.log(`Staked: ${digest}`);
+  expectStatus(await reportSubmitted(intent.id, digest), "executed", "staked");
 }

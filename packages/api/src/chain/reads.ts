@@ -11,7 +11,7 @@ import {
 import { bcs } from "@mysten/sui/bcs";
 import { CETUS_ORIGINAL_PACKAGE_ID, KOSHIRAE_ORIGINAL_PACKAGE_ID, suiClient } from "./client";
 import { normalizeStructTag } from "@mysten/sui/utils";
-import { ObjectError } from "@mysten/sui/client";
+import { ObjectError, TransactionError } from "@mysten/sui/client";
 import { ApiError } from "../errors";
 
 const ACTION_CODE_TO_TYPE = Object.fromEntries(
@@ -76,6 +76,21 @@ const AgentCapBcs = bcs.struct("AgentCap", {
   active: bcs.bool(),
   lastNonce: bcs.u64(),
   maxPendingWindowMs: bcs.u64(),
+});
+
+// Field order mirrors capability.move's PendingAction exactly.
+const PendingActionBcs = bcs.struct("PendingAction", {
+  id: bcs.Address,
+  capId: bcs.Address,
+  vaultId: bcs.Address,
+  actionType: bcs.u8(),
+  target: bcs.Address,
+  amount: bcs.u64(),
+  onchainFloor: bcs.u8(),
+  reportedRisk: bcs.u8(),
+  riskScore: bcs.u8(),
+  createdAtMs: bcs.u64(),
+  expiryMs: bcs.u64(),
 });
 
 const OperatorCapBcs = bcs.struct("OperatorCap", {
@@ -189,22 +204,6 @@ export async function fetchVault(id: string): Promise<Vault> {
   });
 }
 
-export async function findCreatedObjectId(
-  digest: string,
-  typePrefix: string,
-): Promise<string | undefined> {
-  const result = await suiClient.waitForTransaction({
-    digest,
-    include: { effects: true, objectTypes: true },
-  });
-  const tx = result.Transaction ?? result.FailedTransaction;
-  const objectTypes = tx?.objectTypes ?? {};
-  const created = (tx?.effects?.changedObjects ?? []).find(
-    (c) => c.idOperation === "Created" && objectTypes[c.objectId]?.includes(typePrefix),
-  );
-  return created?.objectId;
-}
-
 export async function fetchPoolCoinTypes(poolId: string) {
   const object = await getObjectOrNotFound(poolId, "Cetus pool");
   const prefix =
@@ -221,4 +220,37 @@ export function objectIdParam(value: string, name: string): string {
   const parsed = SuiObjectID.safeParse(value);
   if (!parsed.success) throw new ApiError("invalid_request", `${name} is not a valid object ID`);
   return parsed.data;
+}
+
+// PendingAction<T> is generic, so match the base tag followed by "<".
+const PENDING_ACTION_TYPE_PREFIX = koshiraeType("capability", "PendingAction") + "<";
+
+export async function fetchPendingActionExpiry(id: string): Promise<Date> {
+  const object = await getObjectOrNotFound(id, "PendingAction");
+  if (!object.type?.startsWith(PENDING_ACTION_TYPE_PREFIX)) {
+    throw new ApiError("not_found", `${id} is not a Koshirae PendingAction`);
+  }
+  const f = PendingActionBcs.parse(object.content);
+  return new Date(Number(f.expiryMs));
+}
+
+// One-shot existence check (no polling). A digest the API built but nobody
+// signed will never appear, so this must not use waitForTransaction.
+export async function transactionExistsOnChain(digest: string): Promise<boolean> {
+  try {
+    await suiClient.core.getTransaction({ digest });
+    return true;
+  } catch (err) {
+    if (err instanceof TransactionError && err.reason === "notFound") return false;
+    throw err;
+  }
+}
+
+// waitForTransaction rejects with its AbortSignal.timeout() reason, a
+// DOMException named "TimeoutError" (read from @mysten/sui 2.29.0 source).
+export function isTimeoutError(err: unknown): boolean {
+  // Checked by shape: DOMException's relationship to Error varies by runtime.
+  return (
+    typeof err === "object" && err !== null && (err as { name?: unknown }).name === "TimeoutError"
+  );
 }
