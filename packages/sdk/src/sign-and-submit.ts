@@ -24,15 +24,15 @@ export async function signAndSubmit(
     transaction: tx,
     signer,
   });
+  const executed = result.Transaction ?? result.FailedTransaction;
+  if (!executed?.digest) throw new Error("signAndExecuteTransaction returned no digest");
+  // Execution returns before the node's read side catches up, so the next
+  // build can pick this tx's gas coin at a stale version. A failed tx spends
+  // gas too, so wait in both cases.
+  await client.core.waitForTransaction({ digest: executed.digest });
   if (result.FailedTransaction) {
     const { digest, status } = result.FailedTransaction;
     throw new TransactionFailedError(digest, status.error?.message ?? "unknown execution error");
   }
-  const digest = result.Transaction?.digest;
-  if (!digest) throw new Error("signAndExecuteTransaction returned no digest");
-  // Execution returns before the node's read side catches up, so the next
-  // build can pick this tx's gas coin at a stale version and be rejected
-  // (or, on shared objects, stall until the node's 60s finality timeout).
-  await client.core.waitForTransaction({ digest });
-  return digest;
+  return executed.digest;
 }

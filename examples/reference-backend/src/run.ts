@@ -86,7 +86,6 @@ async function runAll(): Promise<void> {
 
 async function main() {
   const args = process.argv.slice(2);
-  const force = args.includes("--force");
   const name = args.find((a) => !a.startsWith("--"));
 
   if (name === "all") return runAll();
@@ -94,7 +93,7 @@ async function main() {
   const scenario = name ? scenarios[name] : undefined;
   if (!scenario) {
     console.log(
-      `Usage: pnpm --filter reference-backend run <scenario|all> [--force]\n` +
+      `Usage: pnpm --filter reference-backend run <scenario|all>\n` +
         `Network: ${network}\nAvailable: ${Object.keys(scenarios).join(", ")}`,
     );
     process.exit(1);

@@ -92,7 +92,6 @@ export async function setupAgentCap(
 
   // The vault starts empty and execute_action draws from vault.balances, so
   // fund it (owner-signed, built locally — no API route for deposit).
-  await suiClient.core.waitForTransaction({ digest: vaultLimitsDigest });
   const depositDigest = await withVersionRaceRetry(async () => {
     const tx = new Transaction();
     tx.setSender(ownerKeypair.toSuiAddress());

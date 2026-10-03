@@ -4,6 +4,8 @@ import { setupAgentCap } from "./setup";
 import { signAndSubmit } from "@koshirae/sdk";
 import { operatorKeypair, suiClient } from "../client";
 import { expectPrediction, expectStatus } from "./assert";
+import { extractCreatedObjectId } from "../extract-created-id";
+import { registerStakeForTeardown } from "./teardown";
 
 const VALIDATOR_ADDRESS = process.env.VALIDATOR_ADDRESS!;
 
@@ -30,5 +32,8 @@ export async function runStakeScenario() {
   // Every fresh intent is "ready"; what matters is that it won't be flagged.
   expectPrediction(intent, "execute", "submit");
   const digest = await signAndSubmit(intent.unsignedTransaction, operatorKeypair, suiClient);
+  // Registered before asserting so teardown unstakes even if the assertion fails.
+  const stakedSuiId = await extractCreatedObjectId(digest, "::staking_pool::StakedSui");
+  if (stakedSuiId) registerStakeForTeardown(stakedSuiId);
   expectStatus(await reportSubmitted(intent.id, digest), "executed", "staked");
 }

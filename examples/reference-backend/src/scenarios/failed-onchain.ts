@@ -40,7 +40,6 @@ export async function runFailedOnChainScenario() {
     operatorKeypair,
     suiClient,
   );
-  await suiClient.core.waitForTransaction({ digest: splitDigest });
 
   const { objects: coins } = await suiClient.core.listCoins({
     owner: operator,

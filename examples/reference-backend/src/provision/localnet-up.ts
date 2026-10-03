@@ -124,6 +124,7 @@ function main() {
 
   if (!skipDb) {
     console.error("[5/5] Pushing the API database schema...");
+    // db:push, not db:migrate: drizzle/ is gitignored; deployed envs need committed migrations.
     execFileSync("pnpm", ["--filter", "@koshirae/api", "db:push:localnet"], {
       stdio: "inherit",
     });

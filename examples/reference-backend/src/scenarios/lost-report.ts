@@ -25,7 +25,6 @@ export async function runLostReportScenario() {
   const intent = await submitIntent(agentCapId, args, lastDigest);
   const digest = await signAndSubmit(intent.unsignedTransaction, operatorKeypair, suiClient);
   console.log(`Executed ${digest} without reporting it`);
-  await suiClient.core.waitForTransaction({ digest });
 
   // Deliberately no reportSubmitted here.
   const replay = await submitIntent(agentCapId, args, digest);
