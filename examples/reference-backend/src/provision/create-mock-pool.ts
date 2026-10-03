@@ -26,6 +26,11 @@ async function main() {
     suiClient,
   );
   const poolId = await extractCreatedObjectId(digest, "::mock_dex::MockPool");
-  console.log(`Mock pool created — set MOCK_POOL_ID=${poolId}`);
+  if (!poolId) throw new Error(`Could not find created MockPool (digest: ${digest})`);
+  console.error("Mock pool created");
+  console.log(`MOCK_POOL_ID=${poolId}`);
 }
-main();
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

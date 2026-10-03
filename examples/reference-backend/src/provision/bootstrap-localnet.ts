@@ -11,7 +11,6 @@ import { parse } from "smol-toml";
 import { operatorKeypair, ownerKeypair, suiClient } from "../client";
 import { normalizeStructTag, normalizeSuiObjectId } from "@mysten/sui/utils";
 import { Transaction } from "@mysten/sui/transactions";
-import { signAndSubmit } from "@koshirae/sdk";
 import { getFaucetHost, requestSuiFromFaucetV2 } from "@mysten/sui/faucet";
 
 const PUBFILE_PATH = process.env.PUBFILE_PATH ?? "../../move/Pub.localnet.toml";
@@ -111,11 +110,41 @@ async function initCetusFactory(cetusPackageId: string, globalConfigId: string, 
     add(tx);
     try {
       const bytes = await tx.build({ client: suiClient });
-      await signAndSubmit(Buffer.from(bytes).toString("base64"), ownerKeypair, suiClient);
+      await submitWithRetry(bytes);
       console.error(`  ${label}: done`);
     } catch (err) {
+      if (isTimeout(err)) throw err; // not "already done": the factory may be half-initialized
       // Both abort if already done, which is expected on a re-run
       console.error(` ${label}: skipped (${(err as Error).message.split("\n")[0]})`);
+    }
+  }
+}
+
+const isTimeout = (err: unknown) =>
+  /timeout|timed out|deadline/i.test(`${(err as Error)?.name} ${(err as Error)?.message}`);
+
+// The localnet node intermittently never finalizes a shared-object tx that
+// follows another one on the same object (the RPC then fails after 60s).
+// Re-sending the same signed bytes is idempotent, so retry on a short deadline,
+// then wait for checkpoint inclusion so the next tx doesn't race this one.
+async function submitWithRetry(bytes: Uint8Array, attempts = 4, timeoutMs = 15_000) {
+  const { signature } = await ownerKeypair.signTransaction(bytes);
+  for (let i = 1; ; i++) {
+    try {
+      const result = await suiClient.core.executeTransaction({
+        transaction: bytes,
+        signatures: [signature],
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (result.FailedTransaction) {
+        throw new Error(result.FailedTransaction.status.error?.message ?? "execution failed");
+      }
+      const digest = result.Transaction!.digest;
+      await suiClient.core.waitForTransaction({ digest, timeout: timeoutMs });
+      return digest;
+    } catch (err) {
+      if (!isTimeout(err) || i >= attempts) throw err;
+      console.error(`  attempt ${i} timed out, resubmitting...`);
     }
   }
 }

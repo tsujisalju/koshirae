@@ -94,7 +94,7 @@ async function main() {
   const scenario = name ? scenarios[name] : undefined;
   if (!scenario) {
     console.log(
-      `Usage: pnpm --filter reference-backend run <scenario|a> [--force]\n` +
+      `Usage: pnpm --filter reference-backend run <scenario|all> [--force]\n` +
         `Network: ${network}\nAvailable: ${Object.keys(scenarios).join(", ")}`,
     );
     process.exit(1);

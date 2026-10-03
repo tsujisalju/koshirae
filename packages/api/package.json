@@ -12,6 +12,7 @@
     "db:migrate": "drizzle-kit migrate",
     "db:migrate:localnet": "DOTENV_CONFIG_PATH=.env.localnet drizzle-kit migrate",
     "db:push": "drizzle-kit push",
+    "db:push:localnet": "DOTENV_CONFIG_PATH=.env.localnet drizzle-kit push",
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {

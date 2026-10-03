@@ -71,7 +71,19 @@ async function main() {
     tx.pure.address(ownerKeypair.toSuiAddress()),
   );
 
-  const bytes = await tx.build({ client: suiClient });
+  let bytes: Uint8Array;
+  try {
+    bytes = await tx.build({ client: suiClient });
+  } catch (err) {
+    // Aborts if this pair/tick spacing already has a pool, expected on a re-run
+    const existing = process.env.CETUS_POOL_ID;
+    if (existing && /create_pool_internal/.test((err as Error).message)) {
+      console.error(`Cetus pool: skipped (${(err as Error).message.split("\n")[0]})`);
+      console.log(`CETUS_POOL_ID=${existing}`);
+      return;
+    }
+    throw err;
+  }
   const digest = await signAndSubmit(
     Buffer.from(bytes).toString("base64"),
     ownerKeypair,
@@ -83,9 +95,8 @@ async function main() {
     "::pool::Pool<",
   );
   if (!poolId) throw new Error(`Could not find created Pool (digest: ${digest})`);
-  console.log(
-    `Pool created: CETUS_POOL_ID=${poolId} (coin ordering A=${coinTypeA}, B=${coinTypeB})`,
-  );
+  console.error(`Cetus pool created (coin ordering A=${coinTypeA}, B=${coinTypeB})`);
+  console.log(`CETUS_POOL_ID=${poolId}`);
 }
 main().catch((err) => {
   console.error(err);
