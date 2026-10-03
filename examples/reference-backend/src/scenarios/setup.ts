@@ -10,6 +10,7 @@ import { KOSHIRAE_PACKAGE_ID, operatorKeypair, ownerKeypair, suiClient } from ".
 import { extractCreatedObjectId } from "../extract-created-id";
 import { SUI_TYPE_ARG } from "@mysten/sui/utils";
 import { CoinLimitsInput } from "@koshirae/core";
+import { registerForTeardown } from "./teardown";
 
 interface ExtraCoinLimit {
   coinType: string;
@@ -59,6 +60,8 @@ export async function setupAgentCap(
   if (!agentCapId || !vaultId)
     throw new Error(`Could not find created AgentCap/Vault (digest: ${createDigest})`);
 
+  registerForTeardown(vaultId, [SUI_TYPE_ARG, ...extraCoinLimits.map((e) => e.coinType)]);
+
   const mintDigest = await withVersionRaceRetry(
     () => mintOperatorCap(agentCapId, operatorKeypair.toSuiAddress(), createDigest),
     sign,
@@ -89,7 +92,6 @@ export async function setupAgentCap(
 
   // The vault starts empty and execute_action draws from vault.balances, so
   // fund it (owner-signed, built locally — no API route for deposit).
-  await suiClient.core.waitForTransaction({ digest: vaultLimitsDigest });
   const depositDigest = await withVersionRaceRetry(async () => {
     const tx = new Transaction();
     tx.setSender(ownerKeypair.toSuiAddress());

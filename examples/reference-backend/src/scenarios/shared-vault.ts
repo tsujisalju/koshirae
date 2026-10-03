@@ -13,6 +13,7 @@ import { extractCreatedObjectId } from "../extract-created-id";
 import { SUI_TYPE_ARG } from "@mysten/sui/utils";
 import { Transaction } from "@mysten/sui/transactions";
 import { randomUUID } from "crypto";
+import { registerForTeardown } from "./teardown";
 
 const AGENT_LIMITS = {
   spendingLimitPerTx: "100000000",
@@ -26,7 +27,7 @@ const TRANSFER_AMOUNT = "100000000";
 
 const ownerSign = (b64: string) => signAndSubmit(b64, ownerKeypair, suiClient);
 const capParams = (recipient: string) => ({
-  periodLengthMs: 86_400_00,
+  periodLengthMs: 86_400_000,
   allowedActions: ["transfer" as const],
   allowedTargets: [recipient],
   protocolTargets: [],
@@ -51,6 +52,8 @@ export async function runSharedVaultScenario() {
     extractCreatedObjectId(createDigest, "::capability::Vault"),
   ]);
   if (!agentCapAId || !vaultId) throw new Error("Agent A / vault creation failed");
+
+  registerForTeardown(vaultId, [SUI_TYPE_ARG]);
 
   const attachDigest = await withVersionRaceRetry(
     () => createAgentCapForVault(vaultId, capParams(recipient), createDigest),
@@ -134,7 +137,7 @@ export async function runSharedVaultScenario() {
       },
       digestA,
     );
-    console.error("UNEXPECTED: Agent B succeeded despite the shared vault ceiling");
+    throw new Error("UNEXPECTED: Agent B succeeded despite the shared vault ceiling");
   } catch (err) {
     if (err instanceof ApiError && err.code === "over_vault_period_limit")
       console.log(
