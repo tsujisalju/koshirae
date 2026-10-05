@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { CoinAmount, CoinType, SuiAddress, SuiObjectID } from "./primitives";
+import { pageOf, PageQuery } from "./pagination";
 
 const baseIntentFields = {
   target: SuiAddress,
@@ -98,3 +99,9 @@ export type BuildOptions = z.infer<typeof BuildOptions>;
 
 export const SubmittedRequest = z.object({ txDigest: z.string().min(1) });
 export type SubmittedRequest = z.infer<typeof SubmittedRequest>;
+
+export const ListIntentsQuery = PageQuery.extend({ status: IntentStatus.optional() });
+export type ListIntentsQuery = z.infer<typeof ListIntentsQuery>;
+
+export const IntentPage = pageOf(Intent);
+export type IntentsPage = z.infer<typeof IntentPage>;
