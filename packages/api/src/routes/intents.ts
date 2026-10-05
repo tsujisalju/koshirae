@@ -17,7 +17,7 @@ import { z } from "zod";
 import { KOSHIRAE_PACKAGE_ID, suiClient } from "../chain/client";
 import { classifyEvents } from "../chain/events";
 import { capabilityAbortCode } from "../chain/move-error";
-import { fetchAgentCap, fetchOperatorCap } from "../chain/reads";
+import { fetchAgentCap, fetchOperatorCap, objectIdParam } from "../chain/reads";
 import { waitForAfterDigest } from "../chain/wait";
 import { db } from "../db/client";
 import { intents } from "../db/schema";
@@ -157,7 +157,7 @@ async function replayIntent(
 /* ---------- routes ---------- */
 
 intentsRouter.post("/agent-caps/:agentCapId/intents", async (req, res) => {
-  const { agentCapId } = req.params;
+  const agentCapId = objectIdParam(req.params.agentCapId, "agentCapId");
   const parsed = SubmitIntentRequest.safeParse(req.body);
   if (!parsed.success) {
     throw new ApiError("invalid_request", "Invalid intent request", z.treeifyError(parsed.error));

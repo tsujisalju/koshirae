@@ -10,7 +10,7 @@ import {
 } from "@koshirae/core";
 import { bcs } from "@mysten/sui/bcs";
 import { CETUS_ORIGINAL_PACKAGE_ID, KOSHIRAE_ORIGINAL_PACKAGE_ID, suiClient } from "./client";
-import { normalizeStructTag } from "@mysten/sui/utils";
+import { normalizeStructTag, normalizeSuiObjectId } from "@mysten/sui/utils";
 import { ObjectError, TransactionError } from "@mysten/sui/client";
 import { ApiError } from "../errors";
 
@@ -222,7 +222,7 @@ export async function fetchPoolCoinTypes(poolId: string) {
 export function objectIdParam(value: string, name: string): string {
   const parsed = SuiObjectID.safeParse(value);
   if (!parsed.success) throw new ApiError("invalid_request", `${name} is not a valid object ID`);
-  return parsed.data;
+  return normalizeSuiObjectId(parsed.data);
 }
 
 // PendingAction<T> is generic, so match the base tag followed by "<".
