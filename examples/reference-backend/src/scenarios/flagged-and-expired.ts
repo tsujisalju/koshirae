@@ -1,7 +1,14 @@
 import { SUI_TYPE_ARG } from "@mysten/sui/utils";
 import { randomUUID } from "crypto";
 import { signAndSubmit } from "@koshirae/sdk";
-import { ApiError, approveIntent, getIntent, reportSubmitted, submitIntent } from "../api";
+import {
+  ApiError,
+  approveIntent,
+  getIntent,
+  listIntents,
+  reportSubmitted,
+  submitIntent,
+} from "../api";
 import { operatorKeypair, suiClient } from "../client";
 import { expectPrediction, expectStatus } from "./assert";
 import { setupAgentCap } from "./setup";
@@ -46,4 +53,12 @@ export async function runFlaggedAndExpiredScenario() {
     if (!(err instanceof ApiError) || err.code !== "pending_action_expired") throw err;
     console.log(`Expected refusal: ${err.message}`);
   }
+
+  const expired = await listIntents(agentCapId, { status: "expired" });
+  if (!expired.items.some((i) => i.id === intent.id))
+    throw new Error("Expired intent missing from status = expired");
+  const pending = await listIntents(agentCapId, { status: "pending_approval" });
+  if (pending.items.some((i) => i.id === intent.id))
+    throw new Error("Expired intent still listed under status = pending_approval");
+  console.log("list filters: expired intent is under expired, not pending_approval");
 }

@@ -13,6 +13,7 @@ import { runTransferScenario } from "./scenarios/transfer";
 import { runLostReportScenario } from "./scenarios/lost-report";
 import { runForeignDigestScenario } from "./scenarios/foreign-digest";
 import { teardownAll } from "./scenarios/teardown";
+import { runReadEndpointsScenario } from "./scenarios/read-endpoints";
 
 type Network = "localnet" | "testnet";
 
@@ -38,6 +39,7 @@ const scenarios: Record<string, Scenario> = {
   "failed-onchain": { run: runFailedOnChainScenario, networks: ANY },
   "lost-report": { run: runLostReportScenario, networks: ANY },
   "foreign-digest": { run: runForeignDigestScenario, networks: ANY },
+  "read-endpoints": { run: runReadEndpointsScenario, networks: ANY },
 };
 
 const network = (process.env.SUI_NETWORK ?? "testnet") as Network;

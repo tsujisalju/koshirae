@@ -1,5 +1,8 @@
 import {
   ErrorResponse,
+  IntentsPage,
+  IntentStatus,
+  Vault,
   type AgentCap,
   type AgentCapPolicyInput,
   type BuildOptions,
@@ -138,3 +141,17 @@ export const getIntent = (intentId: string, afterDigest?: string) =>
 
 export const getAgentCap = (agentCapId: string, afterDigest?: string) =>
   apiFetch<AgentCap>(withAfter(`/agent-caps/${agentCapId}`, afterDigest));
+
+export const getVault = (vaultId: string) => apiFetch<Vault>(`/vaults/${vaultId}`);
+
+export const listIntents = (
+  agentCapId: string,
+  query: { status?: IntentStatus; limit?: number; cursor?: string } = {},
+) => {
+  const params = new URLSearchParams();
+  if (query.status) params.set("status", query.status);
+  if (query.limit !== undefined) params.set("limit", String(query.limit));
+  if (query.cursor) params.set("cursor", query.cursor);
+  const qs = params.toString();
+  return apiFetch<IntentsPage>(`/agent-caps/${agentCapId}/intents${qs ? `?${qs}` : ""}`);
+};
