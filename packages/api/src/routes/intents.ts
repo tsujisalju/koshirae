@@ -269,7 +269,7 @@ intentsRouter.get("/agent-caps/:agentCapId/intents", async (req, res) => {
     throw new ApiError("invalid_request", "Invalid query", z.treeifyError(parsed.error));
   }
   const { status, limit, cursor } = parsed.data;
-  if (cursor !== undefined && /^\d+$/.test(cursor)) {
+  if (cursor !== undefined && !/^\d+$/.test(cursor)) {
     throw new ApiError("invalid_request", "Invalid cursor");
   }
   const beforeNonce = cursor === undefined ? undefined : Number(cursor);

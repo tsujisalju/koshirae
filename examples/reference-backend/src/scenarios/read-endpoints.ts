@@ -1,5 +1,8 @@
+// Read endpoints: GET /vaults/:id and GET /agent-caps/:id/intents.
+// The three intents are built but never signed, so they all stay "ready".
+
 import { SUI_COIN_TYPE } from "@koshirae/core";
-import { getVault, listIntents, submitIntent } from "../api";
+import { ApiError, getVault, listIntents, submitIntent } from "../api";
 import { operatorKeypair, ownerKeypair } from "../client";
 import { setupAgentCap } from "./setup";
 import { randomUUID } from "crypto";
@@ -57,4 +60,12 @@ export async function runReadEndpointsScenario() {
     (await listIntents(agentCapId, { status: "executed" })).items.length === 0,
     "status = executed returns none",
   );
+
+  try {
+    await listIntents(agentCapId, { cursor: "not-a-cursor" });
+    throw new Error("UNEXPECTED: a malformed cursor was accepted");
+  } catch (err) {
+    if (!(err instanceof ApiError) || err.code !== "invalid_request") throw err;
+    console.log("ok: malformed cursor is refused with invalid_request");
+  }
 }
