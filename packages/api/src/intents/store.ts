@@ -1,7 +1,8 @@
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, lt, lte, or } from "drizzle-orm";
 import {
   type AgentCap,
   Intent,
+  IntentsPage,
   type IntentStatus,
   PredictedOutcome,
   SubmitIntentRequest,
@@ -15,25 +16,25 @@ export type DbTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 // `expired` is never stored. A flagged intent whose PendingAction expiry has
 // passed reads as expired until something resolves it.
-export function effectiveStatus(row: IntentRow): IntentStatus {
+export function effectiveStatus(row: IntentRow, now: number = Date.now()): IntentStatus {
   // expiresAt was set from Sui's on-chain clock, but this compares it against
   // the API server's clock, so status can flip a moment early or late
   // relative to what the chain would actually accept for an approval.
   if (
     row.status === "pending_approval" &&
     row.expiresAt !== null &&
-    row.expiresAt.getTime() <= Date.now()
+    row.expiresAt.getTime() <= now
   ) {
     return "expired";
   }
   return row.status as IntentStatus;
 }
 
-export function rowToIntent(row: IntentRow): Intent {
+export function rowToIntent(row: IntentRow, now?: number): Intent {
   return Intent.parse({
     id: row.id,
     agentCapId: row.agentCapId,
-    status: effectiveStatus(row),
+    status: effectiveStatus(row, now),
     predictedOutcome: PredictedOutcome.parse(row.predictedOutcome),
     // jsonb is only typed at compile time; validate what actually came back.
     request: SubmitIntentRequest.parse(row.request),
@@ -77,4 +78,38 @@ export function uniqueViolation(err: unknown): string | null {
   const cause = (err as { cause?: { code?: unknown; constraint_name?: unknown } })?.cause;
   if (cause?.code !== "23505") return null;
   return typeof cause.constraint_name === "string" ? cause.constraint_name : "unknown";
+}
+
+export async function listIntents(
+  agentCapId: string,
+  opts: { status?: IntentStatus; limit: number; beforeNonce?: number },
+): Promise<IntentsPage> {
+  const now = new Date();
+  const conditions = [eq(intents.agentCapId, agentCapId)];
+  if (opts.beforeNonce !== undefined) conditions.push(lt(intents.nonce, opts.beforeNonce));
+
+  if (opts.status === "expired") {
+    conditions.push(eq(intents.status, "pending_approval"), lte(intents.expiresAt, now));
+  } else if (opts.status === "pending_approval") {
+    conditions.push(
+      eq(intents.status, "pending_approval"),
+      or(isNull(intents.expiresAt), gt(intents.expiresAt, now))!,
+    );
+  } else if (opts.status) {
+    conditions.push(eq(intents.status, opts.status));
+  }
+
+  const rows = await db
+    .select()
+    .from(intents)
+    .where(and(...conditions))
+    .orderBy(desc(intents.nonce))
+    .limit(opts.limit + 1);
+
+  const page = rows.slice(0, opts.limit);
+
+  return {
+    items: page.map((row) => rowToIntent(row, now.getTime())),
+    nextCursor: rows.length > opts.limit ? String(page[page.length - 1].nonce) : null,
+  };
 }

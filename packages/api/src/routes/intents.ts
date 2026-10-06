@@ -3,6 +3,7 @@ import {
   BuildOptions,
   type Intent,
   type IntentWithTransaction,
+  ListIntentsQuery,
   normalizeCoinType,
   type PredictedOutcome,
   SubmitIntentRequest,
@@ -28,6 +29,7 @@ import { reconcileUnreportedSubmits, settleIssued } from "../intents/settle";
 import {
   allocateNonce,
   findIntentRow,
+  listIntents,
   loadIntent,
   rowToIntent,
   uniqueViolation,
@@ -258,6 +260,20 @@ intentsRouter.post("/agent-caps/:agentCapId/intents", async (req, res) => {
 
 intentsRouter.get("/intents/:id", async (req, res) => {
   return res.status(200).json(await loadIntent(req.params.id));
+});
+
+intentsRouter.get("/agent-caps/:agentCapId/intents", async (req, res) => {
+  const agentCapId = objectIdParam(req.params.agentCapId, "agentCapId");
+  const parsed = ListIntentsQuery.safeParse(req.query);
+  if (!parsed.success) {
+    throw new ApiError("invalid_request", "Invalid query", z.treeifyError(parsed.error));
+  }
+  const { status, limit, cursor } = parsed.data;
+  if (cursor !== undefined && /^\d+$/.test(cursor)) {
+    throw new ApiError("invalid_request", "Invalid cursor");
+  }
+  const beforeNonce = cursor === undefined ? undefined : Number(cursor);
+  return res.status(200).json(await listIntents(agentCapId, { status, limit, beforeNonce }));
 });
 
 intentsRouter.post("/intents/:id/submitted", async (req, res) => {

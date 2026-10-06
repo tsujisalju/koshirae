@@ -192,6 +192,11 @@ agentCapsRouter.get("/agent-caps/:agentCapId", async (req, res) => {
   return res.status(200).json(await fetchAgentCap(agentCapId));
 });
 
+agentCapsRouter.get("/vaults/:vaultId", async (req, res) => {
+  const vaultId = objectIdParam(req.params.vaultId, "vaultId");
+  return res.status(200).json(await fetchVault(vaultId));
+});
+
 const VaultCoinLimitsUpdate = CoinLimitsInput.partial();
 
 agentCapsRouter.post("/vaults/:vaultId/coin-limits/:coinType", async (req, res) => {
