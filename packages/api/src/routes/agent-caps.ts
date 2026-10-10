@@ -3,15 +3,24 @@ import {
   ACTION_TYPE_CODE,
   AgentCapPolicyInput,
   CoinLimitsInput,
+  ListByOwnerQuery,
   SuiAddress,
   VaultInput,
 } from "@koshirae/core";
 import { Router } from "express";
 import { z } from "zod";
 import { KOSHIRAE_PACKAGE_ID, suiClient } from "../chain/client";
-import { fetchAgentCap, fetchVault, objectIdParam } from "../chain/reads";
+import {
+  fetchAgentCap,
+  fetchVault,
+  fetchVaultBalances,
+  fetchVaults,
+  objectIdParam,
+} from "../chain/reads";
 import { waitForAfterDigest } from "../chain/wait";
 import { ApiError } from "../errors";
+import { waitForIndexedDigest } from "../chain/graphql";
+import { listVaultIdsByOwner } from "../chain/events";
 
 export const agentCapsRouter = Router();
 
@@ -197,6 +206,12 @@ agentCapsRouter.get("/vaults/:vaultId", async (req, res) => {
   return res.status(200).json(await fetchVault(vaultId));
 });
 
+agentCapsRouter.get("/vaults/:vaultId/balances", async (req, res) => {
+  const vaultId = objectIdParam(req.params.vaultId, "vaultId");
+  await waitForAfterDigest(req.query.afterDigest);
+  return res.status(200).json({ balances: await fetchVaultBalances(vaultId) });
+});
+
 const VaultCoinLimitsUpdate = CoinLimitsInput.partial();
 
 agentCapsRouter.post("/vaults/:vaultId/coin-limits/:coinType", async (req, res) => {
@@ -285,4 +300,18 @@ agentCapsRouter.patch("/vaults/:vaultId", async (req, res) => {
   });
   const txBytes = await tx.build({ client: suiClient });
   return res.status(200).json({ unsignedTransaction: Buffer.from(txBytes).toString("base64") });
+});
+
+agentCapsRouter.get("/vaults", async (req, res) => {
+  const parsed = ListByOwnerQuery.safeParse(req.query);
+  if (!parsed.success) {
+    throw new ApiError("invalid_request", "Invalid query", z.treeifyError(parsed.error));
+  }
+  const { owner, limit, cursor } = parsed.data;
+  await waitForIndexedDigest(req.query.afterDigest);
+  const page = await listVaultIdsByOwner(owner, limit, cursor);
+  return res.status(200).json({
+    items: await fetchVaults(page.items),
+    nextCursor: page.nextCursor,
+  });
 });

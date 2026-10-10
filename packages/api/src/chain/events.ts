@@ -2,9 +2,10 @@ import { bcs } from "@mysten/sui/bcs";
 import { normalizeStructTag, normalizeSuiObjectId } from "@mysten/sui/utils";
 import type { SuiClientTypes } from "@mysten/sui/client";
 import { KOSHIRAE_ORIGINAL_PACKAGE_ID } from "./client";
+import { scanEvents } from "./graphql";
 
 // Event type tags carry the package's ORIGINAL id, like object types do.
-const capabilityType = (name: string) =>
+export const capabilityType = (name: string) =>
   normalizeStructTag(`${KOSHIRAE_ORIGINAL_PACKAGE_ID}::capability::${name}`);
 
 const EVENT_TYPES = {
@@ -42,6 +43,11 @@ const ActionFlaggedBcs = bcs.struct("ActionFlagged", {
 const PendingResolvedBcs = bcs.struct("PendingResolved", {
   pendingId: bcs.Address,
   capId: bcs.Address,
+});
+
+const VaultCreatedBcs = bcs.struct("VaultCreated", {
+  vaultId: bcs.Address,
+  owner: bcs.Address,
 });
 
 export type Outcome =
@@ -92,4 +98,23 @@ export function classifyEvents(
     }
   }
   return { kind: "none" };
+}
+
+// Vault ids created by `owner`, newest first. new_vault sets owner to the
+// sender, so filtering by sender finds them; the owner field is still
+// checked so the result never depends on that staying true.
+export function listVaultIdsByOwner(owner: string, limit: number, cursor?: string) {
+  const ownerAddress = normalizeSuiObjectId(owner);
+  return scanEvents({
+    type: capabilityType("VaultCreated"),
+    sender: ownerAddress,
+    limit,
+    cursor,
+    decode: (bytes) => {
+      const ev = VaultCreatedBcs.parse(bytes);
+      return normalizeSuiObjectId(ev.owner) === ownerAddress
+        ? normalizeSuiObjectId(ev.vaultId)
+        : null;
+    },
+  });
 }

@@ -9,6 +9,8 @@ export const PageQuery = z.object({
 export type PageQuery = z.infer<typeof PageQuery>;
 
 // Every list endpoint returns this shape. nextCursor is null on the last page.
+// A page may hold fewer than `limit` items while nextCursor is non-null.
+// Clients should follow the cursor until it is null.
 export const pageOf = <T extends z.ZodType>(item: T) =>
   z.object({
     items: z.array(item),

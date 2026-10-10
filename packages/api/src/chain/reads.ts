@@ -63,6 +63,12 @@ const VaultBcs = bcs.struct("Vault", {
   periodLengthMs: bcs.u64(),
 });
 
+const BalanceFieldBcs = bcs.struct("Field<TypeName,Balance>", {
+  id: bcs.Address,
+  name: TypeNameBcs,
+  value: bcs.u64(),
+});
+
 const AgentCapBcs = bcs.struct("AgentCap", {
   id: bcs.Address,
   version: bcs.u64(),
@@ -195,15 +201,65 @@ export async function fetchOperatorCap(id: string): Promise<{ cap: OperatorCap; 
   };
 }
 
-export async function fetchVault(id: string): Promise<Vault> {
-  const object = await getTypedObject(id, VAULT_TYPE, "Vault");
-  const f = VaultBcs.parse(object.content);
+type VaultFields = ReturnType<(typeof VaultBcs)["parse"]>;
+
+function toVault(id: string, f: VaultFields): Vault {
   return Vault.parse({
     id,
     version: Number(f.version),
     owner: f.owner,
     periodLengthMs: Number(f.periodLengthMs),
     limits: parseCoinLimitMap(f.limits),
+  });
+}
+
+async function readVaultFields(id: string): Promise<VaultFields> {
+  const object = await getTypedObject(id, VAULT_TYPE, "Vault");
+  return VaultBcs.parse(object.content);
+}
+
+export async function fetchVault(id: string): Promise<Vault> {
+  return toVault(id, await readVaultFields(id));
+}
+
+//Lists the Bag's dynamic fields, then reads them  all in one batched call.
+// A coin type that was fullt withdrawn stays in the Bag and reads as "0".
+export async function fetchVaultBalances(id: string): Promise<Record<string, string>> {
+  const { balances: bag } = await readVaultFields(id);
+
+  const fieldIds: string[] = [];
+  let cursor: string | null = null;
+  do {
+    const page = await suiClient.core.listDynamicFields({ parentId: bag.id, cursor });
+    fieldIds.push(...page.dynamicFields.map((f) => f.fieldId));
+    cursor = page.hasNextPage ? page.cursor : null;
+  } while (cursor);
+  if (fieldIds.length === 0) return {};
+
+  const { objects } = await suiClient.core.getObjects({
+    objectIds: fieldIds,
+    include: { content: true },
+  });
+  const balances: Record<string, string> = {};
+  for (const object of objects) {
+    if (object instanceof Error) throw object;
+    const f = BalanceFieldBcs.parse(object.content);
+    balances[normalizeCoinType(`0x${f.name.name}`)] = f.value;
+  }
+  return balances;
+}
+
+// One batched read for a page of vault ids, in the order given.
+export async function fetchVaults(ids: string[]): Promise<Vault[]> {
+  if (ids.length === 0) return [];
+  const { objects } = await suiClient.core.getObjects({
+    objectIds: ids,
+    include: { content: true },
+  });
+  return objects.map((object, i) => {
+    if (object instanceof Error) throw object;
+    if (object.type !== VAULT_TYPE) throw new Error(`${ids[i]} is not a Koshirae Vault`);
+    return toVault(ids[i], VaultBcs.parse(object.content));
   });
 }
 
